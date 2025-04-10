@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Sign Up</title>
+  </head>
+  <body>
+    <h1>회원가입</h1>
+    <form id="signupForm">
+      <div>
+        <label for="email">Email: </label>
+        <input type="email" id="email" name="email" required />
+      </div>
+      <div>
+        <label for="password">Password: </label>
+        <input type="password" id="password" name="password" required />
+      </div>
+      <button type="submit">Sign Up</button>
+    </form>
+
+    <div id="message"></div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const signupForm = document.getElementById("signupForm");
+        const messageDiv = document.getElementById("message");
+
+        signupForm.addEventListener("submit", async (event) => {
+          event.preventDefault(); // 기본 폼 제출 동작 방지
+
+          const email = document.getElementById("email").value;
+          const password = document.getElementById("password").value;
+
+          try {
+            const response = await fetch("/auth/signup", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json", // JSON 데이터 전송 명시
+              },
+              body: JSON.stringify({ email, password }), // 폼 데이터 JSON 변환
+            });
+
+            const data = await response.json();
+            messageDiv.textContent = JSON.stringify(data);
+
+            if (response.ok) {
+              messageDiv.style.color = "green";
+              localStorage.setItem(`user:${email}:email`, email);
+            } else {
+              messageDiv.style.color = "red";
+            }
+          } catch (error) {
+            console.error("회원가입 요청 오류:", error);
+            messageDiv.textContent = "회원가입 요청에 실패했습니다.";
+            messageDiv.style.color = "red";
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
