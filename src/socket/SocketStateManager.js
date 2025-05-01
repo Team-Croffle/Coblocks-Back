@@ -1,4 +1,4 @@
-// src/socket/SocketStateManager.js (디버깅 로그 포함 최종본)
+// src/socket/SocketStateManager.js (최종 정리본)
 
 const logger = require("../utils/logger");
 
@@ -25,6 +25,7 @@ class SocketStateManager {
     let previousRoomId = this.userRoomMap[socketId] || null;
     let endedPreviousClassroom = null;
 
+    // 사용자가 이미 다른 방에 접속 중이었다면, 이전 방에서 먼저 제거
     if (previousRoomId && previousRoomId !== classroomId) {
       logger.info(
         `[StateManager] User ${userId}(${socketId}) moving from room ${previousRoomId} to ${classroomId}. Removing from previous room first.`
@@ -33,10 +34,12 @@ class SocketStateManager {
       if (removeResult.endedClassroomDetails) {
         endedPreviousClassroom = removeResult.endedClassroomDetails;
       }
-      previousRoomId = null;
+      previousRoomId = null; // 이제 이전 방은 없음
     }
 
+    // 참여하려는 방 상태 초기화 또는 가져오기
     if (!this.rooms[classroomId]) {
+      // 방이 없는 경우 새로 생성 (개설자만 가능)
       if (!isManager) {
         if (!this.isClassroomActive(classroomId)) {
           logger.warn(
@@ -47,31 +50,36 @@ class SocketStateManager {
             message: "Cannot join: Classroom session is not active.",
           };
         }
+        // 만약 개설자는 classroomManagerMap에 있는데 rooms entry가 없다면 상태 불일치 (심각 오류)
         logger.error(
           `[StateManager] Inconsistency: Manager exists for ${classroomId} but room state is missing!`
         );
         return { success: false, message: "Server state inconsistency." };
       }
+      // 개설자가 처음 조인하는 경우: 새로운 강의실 세션 초기화
       logger.info(
         `[StateManager] Initializing new room state for ${classroomId} by manager ${userId}(${socketId}).`
       );
       this.rooms[classroomId] = {
-        users: {},
-        managerSocketId: socketId,
-        classroomCode: classroomCode,
-        classroomDetails: classroomDetails,
+        users: {}, // 사용자 목록 초기화
+        managerSocketId: socketId, // 개설자 소켓 ID 설정
+        classroomCode: classroomCode, // 강의실 코드 저장
+        classroomDetails: classroomDetails, // 강의실 상세 정보 객체 저장
       };
-      this.classroomManagerMap[classroomId] = socketId;
+      this.classroomManagerMap[classroomId] = socketId; // 활성 세션으로 표시
     } else {
+      // 방이 이미 있는 경우
       if (isManager) {
+        // 개설자가 재접속한 경우
         logger.info(
           `[StateManager] Manager ${userId}(${socketId}) re-joined room ${classroomId}. Updating manager socket ID.`
         );
-        this.rooms[classroomId].managerSocketId = socketId;
-        this.classroomManagerMap[classroomId] = socketId;
+        this.rooms[classroomId].managerSocketId = socketId; // 새 소켓 ID로 업데이트
+        this.classroomManagerMap[classroomId] = socketId; // 맵도 업데이트
       }
     }
 
+    // 사용자 추가 전, 동일 userId의 기존 소켓 정보 제거 로직
     const roomUsers = this.rooms[classroomId].users;
     let oldSocketId = null;
     for (const existingSocketId in roomUsers) {
@@ -89,8 +97,11 @@ class SocketStateManager {
       delete this.userRoomMap[oldSocketId];
     }
 
+    // 새로운 소켓 정보로 사용자를 users 목록에 추가 (또는 업데이트)
     const userEntry = { userId, username, socketId, joinedAt: new Date() };
     roomUsers[socketId] = userEntry;
+
+    // userRoomMap 업데이트 (새 소켓 ID 기준)
     this.userRoomMap[socketId] = classroomId;
 
     logger.info(
@@ -165,53 +176,13 @@ class SocketStateManager {
   }
 
   /**
-   * 특정 강의실의 사용자 목록을 반환합니다. (디버깅 로그 추가)
+   * 특정 강의실의 사용자 목록을 반환합니다. (디버깅 로그 제거)
    */
   getUsersInClassroom(classroomId) {
-    // <<<--- 디버깅 로그 포함 버전 ---<<<
-    logger.info(
-      `>>> [Debug State Check - Inside Func] Checking for classroomId: ${classroomId}`
-    );
-    const room = this.rooms[classroomId];
-    logger.info(
-      `>>> [Debug State Check - Inside Func] Found room object:`,
-      room
-    );
-    if (room && room.users) {
-      logger.info(
-        `>>> [Debug State Check - Inside Func] Found users object:`,
-        room.users
-      );
-      logger.info(
-        `>>> [Debug State Check - Inside Func] Type of users object: ${typeof room.users}`
-      );
-      const usersArray = Object.values(room.users);
-      logger.info(
-        `>>> [Debug Return Check - Inside Func] Value to return:`,
-        usersArray
-      );
-      logger.info(
-        `>>> [Debug Return Check - Inside Func] Array.isArray(value): ${Array.isArray(
-          usersArray
-        )}`
-      );
-      return usersArray;
-    } else {
-      logger.info(
-        `>>> [Debug State Check - Inside Func] Room or users not found, returning [].`
-      );
-      const emptyArray = [];
-      logger.info(
-        `>>> [Debug Return Check - Inside Func] Value to return:`,
-        emptyArray
-      );
-      logger.info(
-        `>>> [Debug Return Check - Inside Func] Array.isArray(value): ${Array.isArray(
-          emptyArray
-        )}`
-      );
-      return emptyArray;
-    }
+    // <<<--- 디버깅 로그 제거됨 ---<<<
+    return this.rooms[classroomId]
+      ? Object.values(this.rooms[classroomId].users)
+      : [];
   }
 
   /**

@@ -1,4 +1,4 @@
-// public/js/client.js (진짜! 최종 완전본 - 생략 없음)
+// public/js/client.js (최종 완전본 - 생략 없음)
 
 const BACKEND_URL = "http://localhost:3000";
 
@@ -23,18 +23,22 @@ let responseArea;
  * @param {object} socketInstance - 연결된 소켓 인스턴스
  */
 function setupSocketListeners(socketInstance) {
-  if (!socketInstance) return;
+  if (!socketInstance || socketInstance._listenersSetup) {
+    // console.log("Listeners already set up or socket invalid."); // 필요시 로깅
+    return;
+  }
   console.log(`Setting up listeners for socket: ${socketInstance.id}`);
 
   // 기본 이벤트 리스너
   socketInstance.on("connect", () => {
     console.log(`Socket connected: ${socketInstance.id}`);
+    // 연결 성공 후, 참여하려는 강의실 정보가 있다면 JOIN 이벤트 자동 발송
     if (
       currentClassroomInfo &&
       currentClassroomId === currentClassroomInfo.classroom_id
     ) {
       console.log(
-        `>>> Auto Emitting joinClassroom for ${currentClassroomId} after connect`
+        `Auto Emitting joinClassroom for ${currentClassroomId} after connect`
       );
       socketInstance.emit("joinClassroom", {
         classroomDetails: currentClassroomInfo,
@@ -48,9 +52,9 @@ function setupSocketListeners(socketInstance) {
 
   socketInstance.on("disconnect", (reason) => {
     console.log(`Socket disconnected: ${socketInstance.id}, Reason: ${reason}`);
-    alert(`서버 연결 끊김: ${reason}`);
+    // alert(`서버 연결 끊김: ${reason}`); // 사용자 요청으로 alert 제거
     hideChatContainer();
-    socket = null; // 소켓 변수 초기화
+    socket = null;
   });
 
   socketInstance.on("error", (err) => {
@@ -58,38 +62,49 @@ function setupSocketListeners(socketInstance) {
     alert(`Socket 오류: ${err.message || err}`);
   });
 
-  socketInstance.on("userJoinedClassroom", (data) => {
-    // data 객체는 { userId: '참여한사람ID', username: '참여한사람이름', users: [갱신된 전체 목록] } 형태를 기대
-    console.log("Received userJoinedClassroom:", data); // 이벤트 및 데이터 확인 로그
-    if (data && data.users) {
-      // 전달받은 최신 전체 사용자 목록으로 UI 업데이트
-      updateParticipantsList(data.users); // 참여자 목록 업데이트 함수 호출
+  // 강의실/채팅 관련 이벤트 리스너
+  socketInstance.on("classroomMessage", (data) => {
+    displayChatMessage(data);
+  });
 
-      // (선택사항) 채팅창에 시스템 메시지 표시
+  socketInstance.on("joinClassroomSuccess", (response) => {
+    console.log("Received joinClassroomSuccess:", response);
+    if (response.success && response.users && response.classroom) {
+      showChatContainer(response.classroom);
+      updateParticipantsList(response.users);
+      console.log(
+        `Successfully joined room ${response.classroom.classroom_code}. Manager: ${response.isManager}`
+      );
+    } else {
+      console.error("Failed to join classroom via socket:", response.message);
+      alert(`강의실 참여 실패: ${response.message || "알 수 없는 오류"}`);
+      hideChatContainer();
+      if (socket) socket.disconnect();
+      socket = null;
+    }
+  });
+
+  socketInstance.on("userJoinedClassroom", (data) => {
+    console.log("Received userJoinedClassroom:", data);
+    if (data && data.users) {
+      updateParticipantsList(data.users);
       const joiningUserName = data.username || data.userId || "Someone";
-      // 채팅 메시지 표시 함수 재활용
       displayChatMessage({
         username: "System",
         message: `${joiningUserName}님이 입장했습니다.`,
       });
     } else {
-      // 예상치 못한 데이터 형식일 경우 경고 로그
       console.warn(
         "Received userJoinedClassroom event without valid users data:",
         data
       );
-      // 필요하다면 여기서 사용자 목록 API를 다시 호출하여 동기화할 수도 있음
     }
   });
 
   socketInstance.on("userLeftClassroom", (data) => {
-    // data 객체는 { userId: '나간사람ID', username: '나간사람이름', users: [갱신된 전체 목록] } 형태를 기대
     console.log("Received userLeftClassroom:", data);
     if (data && data.users) {
-      // 전달받은 최신 전체 사용자 목록으로 UI 업데이트
-      updateParticipantsList(data.users); // 참여자 목록 업데이트 함수 호출
-
-      // (선택사항) 채팅창에 시스템 메시지 표시
+      updateParticipantsList(data.users);
       const leavingUserName = data.username || data.userId || "Someone";
       displayChatMessage({
         username: "System",
@@ -100,51 +115,27 @@ function setupSocketListeners(socketInstance) {
         "Received userLeftClassroom event without valid users data:",
         data
       );
-      // 필요하다면 여기서 사용자 목록 API를 다시 호출할 수도 있음
     }
   });
 
   socketInstance.on("classroomDeleted", (data) => {
-    // data 객체는 { classroomId: '삭제된ID', message: '삭제사유 메시지' } 형태를 기대
     console.log("Received classroomDeleted:", data);
-    logSocketEvent("classroomDeleted", data); // 필요시 로그 함수 사용
-
-    // 현재 내가 접속해 있던 방이 삭제된 경우에만 처리
     if (currentClassroomId === data.classroomId) {
       alert(
         data.message ||
           `참여 중인 강의실(ID: ${data.classroomId})이 삭제되었습니다.`
       );
-      // 채팅 UI 숨김 및 관련 상태 초기화
       hideChatContainer();
+      if (socket) socket.disconnect();
+      socket = null;
     } else {
-      // 내가 접속 중인 방이 아닌 다른 방이 삭제된 알림일 경우 (일반적으로 발생하지 않음)
       console.warn(
         `Received classroomDeleted event for a room (${data.classroomId}) I wasn't in? Current room: ${currentClassroomId}`
       );
     }
   });
 
-  // 강의실/채팅 관련 이벤트 리스너
-  socketInstance.on("classroomMessage", (data) => {
-    displayChatMessage(data);
-  });
-
-  socketInstance.on("joinClassroomSuccess", (response) => {
-    console.log("Received joinClassroomSuccess:", response);
-    if (response.success && response.users) {
-      updateParticipantsList(response.users);
-      console.log(
-        `Successfully joined room ${response.classroom?.classroom_code}. Manager: ${response.isManager}`
-      );
-    } else {
-      console.error("Failed to join classroom via socket:", response.message);
-      alert(`강의실 참여 실패: ${response.message || "알 수 없는 오류"}`);
-      hideChatContainer();
-    }
-  });
-
-  // TODO: 다른 이벤트 리스너 추가 (userJoinedClassroom, userLeftClassroom, classroomDeleted)
+  socketInstance._listenersSetup = true; // 리스너 설정 완료 플래그 (임시)
 }
 
 /**
@@ -152,12 +143,16 @@ function setupSocketListeners(socketInstance) {
  */
 function connectAndJoin(userId, username) {
   if (!currentClassroomInfo || !currentClassroomId) {
-    console.error("No classroom info set...");
+    console.error(
+      "No classroom info set before attempting to connect and join."
+    );
     alert("참여할 강의실 정보가 없습니다.");
     return;
   }
   if (socket && socket.connected) {
-    console.log("Disconnecting existing socket...");
+    console.log(
+      "Disconnecting existing socket before creating a new connection..."
+    );
     socket.disconnect();
   }
   socket = null;
@@ -223,17 +218,39 @@ function sendMessage() {
 }
 
 /**
- * 채팅 컨테이너(강의실 영역) 표시 및 정보 설정
+ * 채팅 컨테이너 표시 함수
  */
 function showChatContainer(classroom) {
-  if (!chatContainer || !classroomInfoDiv) return;
+  if (!chatContainer || !classroomInfoDiv || !classroom) {
+    console.warn(
+      "Cannot show chat container, element or classroom data missing."
+    );
+    return;
+  }
   classroomInfoDiv.textContent = `강의실: ${classroom.classroom_name} (코드: ${classroom.classroom_code})`;
   chatContainer.style.display = "block";
   if (createClassroomBtn) createClassroomBtn.disabled = true;
+  if (joinClassroomBtn) joinClassroomBtn.disabled = true;
+  if (leaveClassroomBtn) leaveClassroomBtn.disabled = false; // 나가기 버튼 활성화
+  if (deleteClassroomBtn && userIdInput) {
+    // 삭제 버튼 제어
+    const currentUserId = userIdInput.value;
+    if (currentUserId && currentUserId === classroom.manager_users_id) {
+      deleteClassroomBtn.disabled = false;
+      deleteClassroomBtn.style.display = "inline-block";
+      console.log("Manager UI: Delete button enabled.");
+    } else {
+      deleteClassroomBtn.disabled = true;
+      deleteClassroomBtn.style.display = "none";
+      console.log("Non-manager UI: Delete button disabled.");
+    }
+  } else {
+    if (deleteClassroomBtn) deleteClassroomBtn.style.display = "none";
+  }
 }
 
 /**
- * 채팅 컨테이너(강의실 영역) 숨김 및 상태 초기화
+ * 채팅 컨테이너 숨김 함수
  */
 function hideChatContainer() {
   if (!chatContainer) return;
@@ -243,6 +260,14 @@ function hideChatContainer() {
   if (messagesDiv) messagesDiv.innerHTML = "";
   if (messageInput) messageInput.value = "";
   if (createClassroomBtn) createClassroomBtn.disabled = false;
+  if (joinClassroomBtn) joinClassroomBtn.disabled = false;
+  if (leaveClassroomBtn) leaveClassroomBtn.disabled = true; // 나갔으므로 비활성화
+  if (deleteClassroomBtn) deleteClassroomBtn.disabled = true; // 나갔으므로 비활성화
+  if (socket && socket.connected) {
+    console.log("Disconnecting socket in hideChatContainer");
+    socket.disconnect();
+  } // 나가거나 삭제 시 연결 끊기
+  socket = null;
 }
 
 /**
@@ -281,9 +306,11 @@ document.addEventListener("DOMContentLoaded", () => {
   participantsList = document.getElementById("participantsList");
   participantCount = document.getElementById("participantCount");
   responseArea = document.getElementById("responseArea");
-
   console.log("DOM Loaded. Attaching listeners.");
   updateParticipantsList([]);
+  // 초기 버튼 상태
+  if (leaveClassroomBtn) leaveClassroomBtn.disabled = true;
+  if (deleteClassroomBtn) deleteClassroomBtn.disabled = true;
 
   // '강의실 생성 및 참여' 버튼 리스너
   if (createClassroomBtn) {
@@ -312,8 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(managerId, username);
-          showChatContainer(data.classroom);
+          connectAndJoin(managerId, username); /* showChatContainer 제거됨 */
         } else {
           alert(`교실 생성 실패: ${data.message}`);
         }
@@ -329,7 +355,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // '코드로 접속' 버튼 리스너
   if (joinClassroomBtn) {
-    joinClassroomBtn.disabled = false;
     joinClassroomBtn.addEventListener("click", async () => {
       const code = joinCodeInput.value.trim().toUpperCase();
       const userId = userIdInput.value.trim();
@@ -353,8 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
           alert(`강의실 코드 확인 완료: ${data.message}`);
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(userId, username);
-          showChatContainer(data.classroom);
+          connectAndJoin(userId, username); /* showChatContainer 제거됨 */
         } else {
           alert(`강의실 접속 실패: ${data.message || "알 수 없는 오류"}`);
         }
@@ -366,6 +390,64 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   } else {
     console.warn("Join classroom button not found.");
+  }
+
+  // '강의실 나가기' 버튼 리스너 (API 호출 방식)
+  if (leaveClassroomBtn) {
+    leaveClassroomBtn.addEventListener("click", async () => {
+      if (!currentClassroomId || !currentClassroomInfo) {
+        alert("현재 참여 중인 강의실이 없습니다.");
+        hideChatContainer();
+        return;
+      }
+      const code = currentClassroomInfo.classroom_code;
+      const userId = userIdInput.value.trim();
+      if (!code || !userId) {
+        alert("강의실 코드 또는 사용자 ID를 가져올 수 없습니다.");
+        return;
+      }
+      if (
+        !confirm(
+          `'${currentClassroomInfo.classroom_name}' 강의실에서 나가시겠습니까?`
+        )
+      ) {
+        return;
+      }
+      console.log(
+        `Attempting to leave classroom ${code} via API as user ${userId}`
+      );
+      try {
+        const response = await fetch(
+          `${BACKEND_URL}/api/classrooms/${code}/leave`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: userId }),
+          }
+        );
+        console.log(`API Response Status (Leave): ${response.status}`);
+        if (response.ok) {
+          const data = await response.json();
+          displayResponse(data, response.status);
+          alert(data.message || "강의실에서 성공적으로 나갔습니다.");
+          hideChatContainer();
+        } else {
+          const errorData = await response.json();
+          displayResponse(errorData, response.status);
+          alert(
+            `나가기 실패: ${
+              errorData.message || `Status code ${response.status}`
+            }`
+          );
+        }
+      } catch (error) {
+        console.error("강의실 나가기 API 호출 오류:", error);
+        displayResponse({ success: false, message: error.message }, 500);
+        alert(`나가기 처리 중 오류 발생: ${error.message}`);
+      }
+    });
+  } else {
+    console.warn("Leave classroom button not found.");
   }
 
   // 메시지 전송/입력 리스너
@@ -385,5 +467,92 @@ document.addEventListener("DOMContentLoaded", () => {
     console.warn("Message input not found.");
   }
 
-  // TODO: 나가기, 삭제 버튼 리스너 추가
+  // '강의실 삭제' 버튼 리스너 (전체 교체)
+  if (deleteClassroomBtn) {
+    deleteClassroomBtn.addEventListener("click", async () => {
+      console.log(
+        ">>> Delete button clicked. Current classroom info:",
+        currentClassroomInfo
+      );
+      console.log(">>> Current classroom ID:", currentClassroomId);
+
+      // 참여중인 강의실 정보가 있는지 먼저 확인
+      if (!currentClassroomInfo || !currentClassroomId) {
+        alert("현재 참여 중인 강의실 정보가 없습니다. (State Error)");
+        return;
+      }
+
+      // <<<--- API 호출 전에 필요한 정보 로컬 변수에 저장 ---<<<
+      const classroomNameToDelete = currentClassroomInfo.classroom_name;
+      const classroomCodeToDelete = currentClassroomInfo.classroom_code;
+      const classroomIdToDelete = currentClassroomId; // 필요시 사용 (현재는 직접 사용 X)
+      const currentUserId = userIdInput.value.trim(); // 현재 입력된 사용자 ID
+
+      // 변수 할당 후 confirm 창 띄우기
+      if (
+        !confirm(
+          `정말로 강의실 '${classroomNameToDelete}' (코드: ${classroomCodeToDelete})을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
+        )
+      ) {
+        return; // 사용자가 '취소' 선택
+      }
+      // 필요한 변수들이 있는지 최종 확인
+      if (!classroomCodeToDelete || !currentUserId) {
+        alert("강의실 코드 또는 사용자 ID를 가져올 수 없습니다.");
+        return;
+      }
+
+      console.log(
+        `Attempting to delete classroom with code: ${classroomCodeToDelete} by user: ${currentUserId}`
+      );
+      try {
+        // fetch API 호출 (로컬 변수 사용)
+        const response = await fetch(
+          `${BACKEND_URL}/api/classrooms/${classroomCodeToDelete}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            // 임시 인증: 요청 본문에 userId 포함
+            body: JSON.stringify({ userId: currentUserId }),
+          }
+        );
+        console.log(`API Response Status (Delete): ${response.status}`);
+
+        if (response.ok) {
+          // 200 OK 또는 204 No Content 등 성공 상태
+          // 성공 alert 메시지 (로컬 변수 사용)
+          alert(
+            `강의실 '${classroomNameToDelete}'이(가) 성공적으로 삭제되었습니다.`
+          );
+          // UI 정리 (hideChatContainer가 소켓 정리 포함)
+          hideChatContainer();
+          // 백엔드가 CLASSROOM_DELETED 이벤트를 다른 참여자에게 보냄
+        } else {
+          // 실패 응답 처리 (4xx, 5xx 에러)
+          let errorData = {
+            message: `Deletion failed with status ${response.status}`,
+          };
+          try {
+            // 오류 응답에 본문이 있을 경우 파싱 시도
+            errorData = await response.json();
+          } catch (parseError) {
+            console.error("Could not parse error response body:", parseError);
+          }
+          displayResponse(errorData, response.status); // 오류 정보 표시
+          alert(
+            `강의실 삭제 실패: ${
+              errorData.message || `Status code ${response.status}`
+            }`
+          );
+        }
+      } catch (error) {
+        // 네트워크 오류 등 fetch 자체 오류
+        console.error("강의실 삭제 API 호출 오류:", error);
+        displayResponse({ success: false, message: error.message }, 500);
+        alert(`강의실 삭제 중 오류 발생: ${error.message}`);
+      }
+    });
+  } else {
+    console.warn("Delete classroom button not found.");
+  }
 }); // DOMContentLoaded 끝
