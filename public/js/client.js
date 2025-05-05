@@ -1,5 +1,3 @@
-// public/js/client.js (최종 완전본 - 생략 없음)
-
 const BACKEND_URL = "http://localhost:3000";
 
 let socket = null; // 소켓 인스턴스 변수

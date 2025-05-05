@@ -32,7 +32,7 @@ class Classroom {
 
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         .insert([
           {
             classroom_id: classroom_id, // UUID
@@ -73,7 +73,7 @@ class Classroom {
     try {
       // 삭제된 행의 수를 확인하기 위해 select()를 사용합니다.
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         .delete()
         .eq("classroom_id", classroom_id)
         .select("classroom_id"); // 삭제된 행의 ID를 선택하여 삭제 여부와 개수 확인
@@ -108,7 +108,7 @@ class Classroom {
   static async findByCode(classroom_code) {
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         .select("*")
         .eq("classroom_code", classroom_code)
         .single(); // 결과가 없거나 하나만 있어야 함
@@ -130,7 +130,7 @@ class Classroom {
   static async findByName(classroom_name) {
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         // 존재 여부만 확인하므로 최소한의 컬럼 선택
         .select("classroom_id")
         .eq("classroom_name", classroom_name)
