@@ -79,9 +79,8 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
       `[Handler] Socket ${socketId} joined Socket.IO room: ${classroomId}`
     );
 
-    // <<<--- [수정] 디버깅 로그 및 임시 배열 확인 로직 제거 ---<<<
     const usersInRoom = stateManager.getUsersInClassroom(classroomId);
-    // 이제 usersInRoom은 항상 배열이라고 가정하고 바로 사용
+    // StateManager.getUsersInClassroom은 항상 배열을 반환하므로 바로 map 사용
     const simplifiedUsers = usersInRoom.map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -122,7 +121,6 @@ async function handleLeaveClassroom(socket, data, stateManager, io) {
   const socketId = socket.id;
   const userId = socket.userId;
   const username = socket.userName;
-
   logger.info(
     `[Handler] handleLeaveClassroom called for socket: ${socketId}, User: ${userId}`
   );
@@ -228,7 +226,6 @@ function handleSendMessage(socket, data, stateManager, io) {
 
     if (!message) {
       // logger.warn(`[Handler] Empty message received from ${userId}(${socketId}).`);
-      // socket.emit(events.MESSAGE_ERROR, { message: "Message cannot be empty." });
       return; // 빈 메시지 무시
     }
     if (!userId || !username) {
@@ -258,7 +255,7 @@ function handleSendMessage(socket, data, stateManager, io) {
       timestamp: new Date().toISOString(),
     };
 
-    io.to(roomId).emit(events.CLASSROOM_MESSAGE, messageData); // "classroomMessage" 이벤트 사용
+    io.to(roomId).emit(events.CLASSROOM_MESSAGE, messageData);
 
     // logger.info(`[Handler] User ${userId}(${username}) sent message to room ${roomId}: "${message}"`); // 성공 로그 필요시 유지
   } catch (error) {
@@ -281,7 +278,6 @@ async function handleDisconnect(socket, stateManager, io, reason) {
   const socketId = socket.id;
   const userId = socket.userId;
   const username = socket.userName;
-
   logger.info(
     `[Handler] handleDisconnect called for socket: ${socketId}, User: ${userId}, Reason: ${reason}`
   );

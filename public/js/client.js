@@ -35,9 +35,6 @@ function setupSocketListeners(socketInstance) {
       currentClassroomInfo &&
       currentClassroomId === currentClassroomInfo.classroom_id
     ) {
-      console.log(
-        `Auto Emitting joinClassroom for ${currentClassroomId} after connect`
-      );
       socketInstance.emit("joinClassroom", {
         classroomDetails: currentClassroomInfo,
       });
@@ -50,7 +47,6 @@ function setupSocketListeners(socketInstance) {
 
   socketInstance.on("disconnect", (reason) => {
     console.log(`Socket disconnected: ${socketInstance.id}, Reason: ${reason}`);
-    // alert(`서버 연결 끊김: ${reason}`); // 사용자 요청으로 alert 제거
     hideChatContainer();
     socket = null;
   });
@@ -337,7 +333,7 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(managerId, username); /* showChatContainer 제거됨 */
+          connectAndJoin(managerId, username);
         } else {
           alert(`교실 생성 실패: ${data.message}`);
         }
@@ -376,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
           alert(`강의실 코드 확인 완료: ${data.message}`);
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(userId, username); /* showChatContainer 제거됨 */
+          connectAndJoin(userId, username);
         } else {
           alert(`강의실 접속 실패: ${data.message || "알 수 없는 오류"}`);
         }
@@ -468,12 +464,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // '강의실 삭제' 버튼 리스너 (전체 교체)
   if (deleteClassroomBtn) {
     deleteClassroomBtn.addEventListener("click", async () => {
-      console.log(
-        ">>> Delete button clicked. Current classroom info:",
-        currentClassroomInfo
-      );
-      console.log(">>> Current classroom ID:", currentClassroomId);
-
       // 참여중인 강의실 정보가 있는지 먼저 확인
       if (!currentClassroomInfo || !currentClassroomId) {
         alert("현재 참여 중인 강의실 정보가 없습니다. (State Error)");
