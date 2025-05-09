@@ -1,6 +1,26 @@
-// public/js/client.js (최종 완전본 - 생략 없음)
-
 const BACKEND_URL = "http://localhost:3000";
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+let supabase = null;
+try {
+  // Supabase 클라이언트 인스턴스 생성 (Supabase 라이브러리가 로드되었다고 가정)
+  // 실제 React 등에서는 import { createClient } from '@supabase/supabase-js' 사용
+  if (typeof window.supabase !== "undefined" && window.supabase.createClient) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log("Supabase client initialized.");
+  } else {
+    throw new Error(
+      "Supabase client library (supabase-js) not found. Make sure it's loaded."
+    );
+  }
+} catch (error) {
+  console.error("Supabase client initialization error:", error.message);
+  alert(
+    "Supabase 클라이언트 초기화 오류! 기능이 제대로 작동하지 않을 수 있습니다."
+  );
+}
 
 let socket = null; // 소켓 인스턴스 변수
 let currentClassroomId = null;
@@ -18,13 +38,54 @@ let messagesDiv, messageInput, sendMessageBtn;
 let participantsList, participantCount;
 let responseArea;
 
+// supabase로부터 access token을 가져오는 함수
+async function getSupabaseAccessToken() {
+  if (!supabase || !supabase.auth) {
+    console.error("Supabase client or auth module not available.");
+    alert("Supabase 초기화 오류 또는 로그인 기능 사용 불가.");
+    return null;
+  }
+
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession(); // 현재 세션 정보 가져오기
+
+  if (error) {
+    console.error("Error getting Supabase session:", error.message);
+    alert("세션 정보를 가져오는 중 오류가 발생했습니다.");
+    return null;
+  }
+  if (!session) {
+    console.warn(
+      "No active Supabase session found. User might need to log in."
+    );
+    // 실제 앱에서는 로그인 페이지로 리디렉션
+    alert("로그인이 필요합니다.");
+    return null;
+  }
+  // console.log("Supabase session:", session); // 디버깅 필요시
+  return session.access_token; // 세션에서 액세스 토큰 반환
+}
+
+// 현재 로그인된 사용자 ID 가져오는 함수
+async function getCurrentUserId() {
+  if (!supabase || !supabase.auth) return null;
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) {
+    return null;
+  }
+  return user.id; // 사용자 고유ID 반환
+}
+
 /**
  * Socket.IO 이벤트 리스너들을 설정하는 함수
- * @param {object} socketInstance - 연결된 소켓 인스턴스
  */
 function setupSocketListeners(socketInstance) {
   if (!socketInstance || socketInstance._listenersSetup) {
-    // console.log("Listeners already set up or socket invalid."); // 필요시 로깅
     return;
   }
   console.log(`Setting up listeners for socket: ${socketInstance.id}`);
@@ -37,9 +98,6 @@ function setupSocketListeners(socketInstance) {
       currentClassroomInfo &&
       currentClassroomId === currentClassroomInfo.classroom_id
     ) {
-      console.log(
-        `Auto Emitting joinClassroom for ${currentClassroomId} after connect`
-      );
       socketInstance.emit("joinClassroom", {
         classroomDetails: currentClassroomInfo,
       });
@@ -52,7 +110,6 @@ function setupSocketListeners(socketInstance) {
 
   socketInstance.on("disconnect", (reason) => {
     console.log(`Socket disconnected: ${socketInstance.id}, Reason: ${reason}`);
-    // alert(`서버 연결 끊김: ${reason}`); // 사용자 요청으로 alert 제거
     hideChatContainer();
     socket = null;
   });
@@ -135,13 +192,13 @@ function setupSocketListeners(socketInstance) {
     }
   });
 
-  socketInstance._listenersSetup = true; // 리스너 설정 완료 플래그 (임시)
+  socketInstance._listenersSetup = true;
 }
 
 /**
  * 소켓 연결 및 참여 시작 함수
  */
-function connectAndJoin(userId, username) {
+function connectAndJoin() {
   if (!currentClassroomInfo || !currentClassroomId) {
     console.error(
       "No classroom info set before attempting to connect and join."
@@ -156,8 +213,14 @@ function connectAndJoin(userId, username) {
     socket.disconnect();
   }
   socket = null;
-  console.log(`Attempting to connect socket for user: ${userId} (${username})`);
-  socket = io(BACKEND_URL, { auth: { userId, username } });
+
+  const accessToken = getSupabaseAccessToken();
+  if (!accessToken) {
+    return;
+  } // 액세스 토큰이 없으면 중단
+
+  console.log(`Attempting to connect socket with token`);
+  socket = io(BACKEND_URL, { auth: { token: accessToken } });
   setupSocketListeners(socket); // 새 소켓에 리스너 설정
 }
 
@@ -220,29 +283,29 @@ function sendMessage() {
 /**
  * 채팅 컨테이너 표시 함수
  */
-function showChatContainer(classroom) {
+async function showChatContainer(classroom) {
+  // async 추가
   if (!chatContainer || !classroomInfoDiv || !classroom) {
-    console.warn(
-      "Cannot show chat container, element or classroom data missing."
-    );
+    console.warn("Cannot show chat container...");
     return;
   }
   classroomInfoDiv.textContent = `강의실: ${classroom.classroom_name} (코드: ${classroom.classroom_code})`;
   chatContainer.style.display = "block";
   if (createClassroomBtn) createClassroomBtn.disabled = true;
   if (joinClassroomBtn) joinClassroomBtn.disabled = true;
-  if (leaveClassroomBtn) leaveClassroomBtn.disabled = false; // 나가기 버튼 활성화
-  if (deleteClassroomBtn && userIdInput) {
-    // 삭제 버튼 제어
-    const currentUserId = userIdInput.value;
-    if (currentUserId && currentUserId === classroom.manager_users_id) {
+  if (leaveClassroomBtn) leaveClassroomBtn.disabled = false;
+
+  // 삭제 버튼 제어 (실제 로그인된 사용자 ID 사용)
+  if (deleteClassroomBtn) {
+    const currentAuthUserId = await getCurrentUserId(); // <<<--- 수정: 실제 인증된 사용자 ID 가져오기
+    if (currentAuthUserId && currentAuthUserId === classroom.manager_users_id) {
       deleteClassroomBtn.disabled = false;
       deleteClassroomBtn.style.display = "inline-block";
       console.log("Manager UI: Delete button enabled.");
     } else {
       deleteClassroomBtn.disabled = true;
       deleteClassroomBtn.style.display = "none";
-      console.log("Non-manager UI: Delete button disabled.");
+      console.log("Non-manager UI: Delete button disabled/hidden.");
     }
   } else {
     if (deleteClassroomBtn) deleteClassroomBtn.style.display = "none";
@@ -261,8 +324,8 @@ function hideChatContainer() {
   if (messageInput) messageInput.value = "";
   if (createClassroomBtn) createClassroomBtn.disabled = false;
   if (joinClassroomBtn) joinClassroomBtn.disabled = false;
-  if (leaveClassroomBtn) leaveClassroomBtn.disabled = true; // 나갔으므로 비활성화
-  if (deleteClassroomBtn) deleteClassroomBtn.disabled = true; // 나갔으므로 비활성화
+  if (leaveClassroomBtn) leaveClassroomBtn.disabled = true;
+  if (deleteClassroomBtn) deleteClassroomBtn.disabled = true;
   if (socket && socket.connected) {
     console.log("Disconnecting socket in hideChatContainer");
     socket.disconnect();
@@ -316,18 +379,21 @@ document.addEventListener("DOMContentLoaded", () => {
   if (createClassroomBtn) {
     createClassroomBtn.addEventListener("click", async () => {
       const classroomName = classroomInput.value;
-      const managerId = managerIdInput.value;
-      const username = userNameInput.value;
-      if (!classroomName || !managerId || !username) {
-        alert("사용자 ID, 사용자 이름, 생성자 ID, 교실 이름을 모두 입력하세요");
+      if (!classroomName) {
+        alert("교실 이름을 입력하세요");
         return;
       }
+
+      const accessToken = await getSupabaseAccessToken();
+      if (!accessToken) return;
       try {
         const response = await fetch(`${BACKEND_URL}/api/classrooms`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
           body: JSON.stringify({
-            manager_users_id: managerId,
             classroom_name: classroomName,
           }),
         });
@@ -339,7 +405,7 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(managerId, username); /* showChatContainer 제거됨 */
+          connectAndJoin();
         } else {
           alert(`교실 생성 실패: ${data.message}`);
         }
@@ -357,20 +423,22 @@ document.addEventListener("DOMContentLoaded", () => {
   if (joinClassroomBtn) {
     joinClassroomBtn.addEventListener("click", async () => {
       const code = joinCodeInput.value.trim().toUpperCase();
-      const userId = userIdInput.value.trim();
-      const username = userNameInput.value.trim();
-      if (!code || !userId || !username) {
+      if (!code) {
         alert("강의실 코드, 사용자 ID, 사용자 이름은 필수입니다.");
         return;
       }
-      console.log(
-        `Attempting to join classroom with code: ${code} as user: ${userId}(${username})`
-      );
+
+      const accessToken = await getSupabaseAccessToken();
+      if (!accessToken) return;
+      console.log(`Attempting to join classroom with code: ${code})`);
       try {
         const response = await fetch(`${BACKEND_URL}/api/classrooms/join`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, userId }),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ code }),
         });
         const data = await response.json();
         displayResponse(data, response.status);
@@ -378,7 +446,7 @@ document.addEventListener("DOMContentLoaded", () => {
           alert(`강의실 코드 확인 완료: ${data.message}`);
           currentClassroomId = data.classroom.classroom_id;
           currentClassroomInfo = data.classroom;
-          connectAndJoin(userId, username); /* showChatContainer 제거됨 */
+          connectAndJoin();
         } else {
           alert(`강의실 접속 실패: ${data.message || "알 수 없는 오류"}`);
         }
@@ -397,13 +465,11 @@ document.addEventListener("DOMContentLoaded", () => {
     leaveClassroomBtn.addEventListener("click", async () => {
       if (!currentClassroomId || !currentClassroomInfo) {
         alert("현재 참여 중인 강의실이 없습니다.");
-        hideChatContainer();
         return;
       }
       const code = currentClassroomInfo.classroom_code;
-      const userId = userIdInput.value.trim();
-      if (!code || !userId) {
-        alert("강의실 코드 또는 사용자 ID를 가져올 수 없습니다.");
+      if (!code) {
+        alert("강의실 코드를 가져올 수 없습니다.");
         return;
       }
       if (
@@ -413,6 +479,9 @@ document.addEventListener("DOMContentLoaded", () => {
       ) {
         return;
       }
+
+      const accessToken = await getSupabaseAccessToken();
+      if (!accessToken) return;
       console.log(
         `Attempting to leave classroom ${code} via API as user ${userId}`
       );
@@ -421,8 +490,10 @@ document.addEventListener("DOMContentLoaded", () => {
           `${BACKEND_URL}/api/classrooms/${code}/leave`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: userId }),
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
           }
         );
         console.log(`API Response Status (Leave): ${response.status}`);
@@ -470,25 +541,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // '강의실 삭제' 버튼 리스너 (전체 교체)
   if (deleteClassroomBtn) {
     deleteClassroomBtn.addEventListener("click", async () => {
-      console.log(
-        ">>> Delete button clicked. Current classroom info:",
-        currentClassroomInfo
-      );
-      console.log(">>> Current classroom ID:", currentClassroomId);
-
       // 참여중인 강의실 정보가 있는지 먼저 확인
       if (!currentClassroomInfo || !currentClassroomId) {
         alert("현재 참여 중인 강의실 정보가 없습니다. (State Error)");
         return;
       }
 
-      // <<<--- API 호출 전에 필요한 정보 로컬 변수에 저장 ---<<<
       const classroomNameToDelete = currentClassroomInfo.classroom_name;
       const classroomCodeToDelete = currentClassroomInfo.classroom_code;
-      const classroomIdToDelete = currentClassroomId; // 필요시 사용 (현재는 직접 사용 X)
-      const currentUserId = userIdInput.value.trim(); // 현재 입력된 사용자 ID
 
-      // 변수 할당 후 confirm 창 띄우기
+      // 사용자에게 최종 확인
       if (
         !confirm(
           `정말로 강의실 '${classroomNameToDelete}' (코드: ${classroomCodeToDelete})을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
@@ -496,44 +558,43 @@ document.addEventListener("DOMContentLoaded", () => {
       ) {
         return; // 사용자가 '취소' 선택
       }
-      // 필요한 변수들이 있는지 최종 확인
-      if (!classroomCodeToDelete || !currentUserId) {
-        alert("강의실 코드 또는 사용자 ID를 가져올 수 없습니다.");
+      if (!classroomCodeToDelete) {
+        alert("강의실 코드를 가져올 수 없습니다.");
         return;
       }
 
+      const accessToken = await getSupabaseAccessToken();
+      if (!accessToken) return;
+
       console.log(
-        `Attempting to delete classroom with code: ${classroomCodeToDelete} by user: ${currentUserId}`
+        `Attempting to delete classroom with code: ${classroomCodeToDelete} using token.`
       );
       try {
-        // fetch API 호출 (로컬 변수 사용)
         const response = await fetch(
           `${BACKEND_URL}/api/classrooms/${classroomCodeToDelete}`,
           {
             method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            // 임시 인증: 요청 본문에 userId 포함
-            body: JSON.stringify({ userId: currentUserId }),
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`, // <<<--- 인증 토큰 전달
+            },
+            // body는 이제 필요 없음
           }
         );
         console.log(`API Response Status (Delete): ${response.status}`);
 
         if (response.ok) {
           // 200 OK 또는 204 No Content 등 성공 상태
-          // 성공 alert 메시지 (로컬 변수 사용)
           alert(
             `강의실 '${classroomNameToDelete}'이(가) 성공적으로 삭제되었습니다.`
           );
-          // UI 정리 (hideChatContainer가 소켓 정리 포함)
-          hideChatContainer();
-          // 백엔드가 CLASSROOM_DELETED 이벤트를 다른 참여자에게 보냄
+          hideChatContainer(); // UI 정리
         } else {
           // 실패 응답 처리 (4xx, 5xx 에러)
           let errorData = {
             message: `Deletion failed with status ${response.status}`,
           };
           try {
-            // 오류 응답에 본문이 있을 경우 파싱 시도
             errorData = await response.json();
           } catch (parseError) {
             console.error("Could not parse error response body:", parseError);

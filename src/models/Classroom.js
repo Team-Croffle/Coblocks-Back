@@ -32,7 +32,7 @@ class Classroom {
 
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         .insert([
           {
             classroom_id: classroom_id, // UUID
@@ -70,37 +70,39 @@ class Classroom {
   // 인자: classroom_id (DB 컬럼 이름 그대로 받음)
   // 반환값: boolean (삭제 성공 여부)
   static async delete(classroom_id) {
+    logger.info(
+      `Attempting to delete classroom ${classroomId} via RPC function 'delete_classroom_securely'.`
+    );
     try {
       // 삭제된 행의 수를 확인하기 위해 select()를 사용합니다.
-      const { data, error } = await supabase
-        .from("classrooms")
-        .delete()
-        .eq("classroom_id", classroom_id)
-        .select("classroom_id"); // 삭제된 행의 ID를 선택하여 삭제 여부와 개수 확인
+      const { error } = await supabase.rpc("delete_classroom_securely", {
+        target_classroom_id: classroom_id,
+      });
 
       if (error) {
+        // RPC 호출 시 발생할 수 있는 다양한 오류들 (예: 함수 없음, 권한 없음, 함수 내부 오류 등)
         logger.error(
-          `Supabase error deleting classroom: ${classroom_id}: ${error.message}`,
+          `Supabase RPC error deleting classroom ${classroomId}: ${error.message}`,
           error
         );
-        // TODO: 특정 Supabase 에러 코드 (예: not found) 처리
-        throw error; // 에러 다시 던짐
+        throw error; // 오류를 다시 던져서 컨트롤러에서 처리하도록 함
       }
 
-      // data 배열의 길이를 통해 삭제된 행의 개수 확인
-      const deletedCount = data ? data.length : 0;
-      if (deletedCount === 0) {
-        logger.warn(
-          `Classroom ${classroom_id} delete operation found no matching row.`
-        );
-        return false; // 일치하는 행이 없어서 삭제되지 않았음을 반환
-      }
-
-      logger.info(`Classroom ${classroom_id} successfully deleted.`);
-      return true; // 일치하는 행을 삭제했음을 반환
+      // Security Definer 함수가 void를 반환하고 오류가 없으면 성공으로 간주
+      logger.info(
+        `Classroom ${classroomId} deletion RPC call executed successfully.`
+      );
+      return true; // 함수 호출 성공 (실제 삭제 여부는 DB 함수 로직에 따름)
     } catch (error) {
-      logger.error(`Error in Classroom.delete: ${error.message}`);
-      throw new Error(`Failed to delete classroom: ${error.message}`); // 에러 감싸서 다시 던짐
+      // 여기서 잡히는 오류는 rpc 호출 실패 또는 위에서 던진 error
+      logger.error(
+        `Error in Classroom.delete (RPC) for ${classroomId}: ${error.message}`
+      );
+      // 컨트롤러가 이 에러를 받아 500 응답 등을 할 수 있도록 다시 던짐
+      // 이전처럼 false를 반환하는 대신 에러를 던지는 것이 더 명확할 수 있음
+      throw new Error(
+        `Failed to execute delete_classroom_securely RPC: ${error.message}`
+      );
     }
   }
 
@@ -108,7 +110,7 @@ class Classroom {
   static async findByCode(classroom_code) {
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         .select("*")
         .eq("classroom_code", classroom_code)
         .single(); // 결과가 없거나 하나만 있어야 함
@@ -130,7 +132,7 @@ class Classroom {
   static async findByName(classroom_name) {
     try {
       const { data, error } = await supabase
-        .from("classrooms")
+        .from("classroom")
         // 존재 여부만 확인하므로 최소한의 컬럼 선택
         .select("classroom_id")
         .eq("classroom_name", classroom_name)

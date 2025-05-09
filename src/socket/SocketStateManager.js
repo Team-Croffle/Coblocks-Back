@@ -1,5 +1,3 @@
-// src/socket/SocketStateManager.js (최종 정리본)
-
 const logger = require("../utils/logger");
 
 class SocketStateManager {

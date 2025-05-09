@@ -5,16 +5,17 @@ const events = require("../socket/events");
 
 const createClassroom = async (req, res) => {
   try {
-    const { manager_users_id, classroom_name } = req.body;
+    const manager_users_id = req.user.id; // JWT에서 사용자 ID 가져오기
+    const { classroom_name } = req.body;
 
-    if (!manager_users_id || !classroom_name) {
+    if (!classroom_name) {
       logger.warn(
         "Create classroom request missing required fields:",
         req.body
       );
       return res.status(400).json({
         success: false,
-        message: "manager_users_id and classroom_name are required.",
+        message: "classroom_name are required.",
       });
     }
 
@@ -42,13 +43,14 @@ const createClassroom = async (req, res) => {
 
 const joinClassroomByCode = async (req, res) => {
   try {
-    const { code, userId } = req.body;
+    const userId = req.user.id; // JWT에서 사용자 ID 가져오기
+    const { code } = req.body;
 
     // 1. 입력 값 유효성 검사
-    if (!code || !userId) {
+    if (!code) {
       return res.status(400).json({
         success: false,
-        message: "Classroom code and userId are required.",
+        message: "Classroom code is required.",
       });
     }
     // 2. 코드로 강의실 정보 조회 (DB)
@@ -110,17 +112,17 @@ const joinClassroomByCode = async (req, res) => {
 
 const deleteClassroom = async (req, res) => {
   const { classroom_code } = req.params;
-  const { userId } = req.body;
+  const userId = req.user.id; // JWT에서 사용자 ID 가져오기
 
   logger.info(
     `Receved request to delete classroom: ${classroom_code} by ${userId}`
   );
 
   try {
-    if (!classroom_code || !userId) {
+    if (!classroom_code) {
       return res.status(400).json({
         success: false,
-        message: "classroom_code and userId are required.",
+        message: "classroom_code is required.",
       });
     }
 
@@ -223,7 +225,7 @@ const deleteClassroom = async (req, res) => {
 
 const leaveClassroom = async (req, res) => {
   const { classroom_code } = req.params; // URL 경로에서 코드 추출
-  const { userId } = req.body; // 요청 본문에서 사용자 ID 추출 (임시 인증)
+  const userId = req.user.id; // 요청 보낸 사용자 ID는 인증된 정보 사용
 
   logger.info(
     `Received API request to leave classroom ${classroom_code} by user ${userId}`
@@ -231,10 +233,10 @@ const leaveClassroom = async (req, res) => {
 
   try {
     // 1. 입력 값 유효성 검사 (코드와 userId 존재 여부)
-    if (!classroom_code || !userId) {
+    if (!classroom_code) {
       return res.status(400).json({
         success: false,
-        message: "Classroom code and userId are required.",
+        message: "Classroom code is required.",
       });
     }
 
