@@ -1,22 +1,24 @@
-// src/socket/setup.js (getIo 함수 추가 - 최종 확인)
+const logger = require("../utils/logger");
+const events = require("./events");
+const handlers = require("./handlers");
+const SocketStateManager = require("./SocketStateManager");
+const jwt = require("jsonwebtoken");
 
-const logger = require("../utils/logger"); // 로거
-const events = require("./events"); // 이벤트 상수
-const handlers = require("./handlers"); // 이벤트 핸들러 함수들
-const SocketStateManager = require("./SocketStateManager"); // 상태 관리자 클래스
-
-// 모듈 스코프 변수: 인스턴스 저장
 let stateManagerInstance = null;
-let ioInstance = null; // <<<--- io 인스턴스 저장 변수
+let ioInstance = null;
+
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+if (!SUPABASE_JWT_SECRET) {
+  logger.error("FATAL ERROR: SUPABASE_JWT_SECRET is not defined in .env file.");
+  throw new Error("Supabase JWT Secret is required for socket authentication.");
+}
 
 /**
  * Socket.IO 서버 인스턴스를 받아 초기 설정을 수행하는 함수
- * @param {object} io - Socket.IO 서버 인스턴스
  */
 function initializeSocket(io) {
-  // 인스턴스 생성 및 모듈 스코프 변수에 할당
   stateManagerInstance = new SocketStateManager();
-  ioInstance = io; // <<<--- 전달받은 io 인스턴스 할당
+  ioInstance = io;
   logger.info(
     ">>> [DEBUG Setup] stateManagerInstance assigned:",
     !!stateManagerInstance
@@ -25,20 +27,32 @@ function initializeSocket(io) {
 
   // Socket.IO 인증 미들웨어 설정
   io.use((socket, next) => {
-    const userId = socket.handshake.auth.userId;
-    const username = socket.handshake.auth.username;
-    if (!userId) {
+    const token = socket.handshake.auth.token;
+    if (!token) {
       logger.warn(
-        `[Socket.IO Auth] Connection rejected: Missing userId. Socket ID: ${socket.id}`
+        `[Socket Auth] Connection rejected: Missing token. Socket ID: ${socket.id}`
       );
-      return next(new Error("Authentication failed: Missing userId."));
+      return next(new Error("Authentication failed: Missing token."));
     }
-    socket.userId = userId;
-    socket.userName = username || `User_${userId.substring(0, 4)}`;
-    logger.info(
-      `[Socket.IO Auth] Socket ${socket.id} authenticated. UserID: ${userId}, Username: ${socket.userName}`
-    );
-    next(); // 통과
+
+    // JWT 토큰 검증
+    jwt.verify(token, SUPABASE_JWT_SECRET, (err, decoded) => {
+      if (err) {
+        logger.warn(`[Socket Auth] Token verification failed: ${err.message}`, {
+          socketId: socket.id,
+        });
+        return next(new Error("Authentication failed: Invalid token."));
+      }
+
+      // 토큰 검증 성공: 디코딩된 정보에서 사용자 ID(sub) 등을 추출하여 소켓 객체에 저장
+      socket.userId = decoded.sub;
+      socket.userName = decoded.name;
+
+      logger.info(
+        `[Socket Auth] Socket ${socket.id} authenticated. UserID: ${socket.userId}, Username: ${socket.userName}`
+      );
+      next(); // 인증 성공, 연결 진행
+    });
   });
 
   // 'connection' 이벤트 리스너
@@ -58,7 +72,7 @@ function initializeSocket(io) {
         );
       } else {
         logger.error(
-          "[Socket.IO] StateManager or IO instance not initialized when handling DISCONNECT."
+          "[Socket.IO] instance not initialized when handling DISCONNECT."
         );
       }
     });
@@ -81,7 +95,7 @@ function initializeSocket(io) {
         );
       } else {
         logger.error(
-          "[Socket.IO] StateManager or IO instance not initialized when handling JOIN_CLASSROOM."
+          "[Socket.IO] instance not initialized when handling JOIN_CLASSROOM."
         );
       }
     });
@@ -97,7 +111,7 @@ function initializeSocket(io) {
         );
       } else {
         logger.error(
-          "[Socket.IO] StateManager or IO instance not initialized when handling SEND_MESSAGE."
+          "[Socket.IO] instance not initialized when handling SEND_MESSAGE."
         );
       }
     });
@@ -117,7 +131,7 @@ function initializeSocket(io) {
         );
       } else {
         logger.error(
-          "[Socket.IO] StateManager or IO instance not initialized when handling LEAVE_CLASSROOM."
+          "[Socket.IO] instance not initialized when handling LEAVE_CLASSROOM."
         );
       }
     });
