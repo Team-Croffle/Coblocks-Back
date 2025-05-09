@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const ClassroomController = require("../controllers/ClassroomController");
+const ClassroomController = require("../controllers/classroomController");
 const authenticateToken = require("../middlewares/authApi");
 
 // 1. 강의실 생성 (POST /api/classrooms)
