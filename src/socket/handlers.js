@@ -97,9 +97,10 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
 
     // 7. 다른 사용자들에게 참여 알림 (USER_JOINED_CLASSROOM)
     socket.to(classroomId).emit(events.USER_JOINED_CLASSROOM, {
-      userId: userId,
-      username: username,
-      users: simplifiedUsers, // 간소화된 목록 전달
+      joinedUser: {
+        userId: userId,
+        username: username, // 05/11 추가
+      },
     });
     logger.info(
       `[Handler] Broadcasted USER_JOINED_CLASSROOM with ${simplifiedUsers.length} users to room ${classroomId}.`
@@ -191,9 +192,10 @@ async function handleLeaveClassroom(socket, data, stateManager, io) {
 
       // 남은 사용자들에게 퇴장 알림 및 갱신된 사용자 목록 발송
       io.to(roomId).emit(events.USER_LEFT_CLASSROOM, {
-        userId: userId,
-        username: username,
-        users: simplifiedUsers, // 갱신된 전체 목록 전달
+        leftUser: {
+          userId: userId,
+          username: username,
+        },
       });
       logger.info(
         `[Handler] Broadcasted USER_LEFT_CLASSROOM with ${simplifiedUsers.length} users to room ${roomId} after user ${userId} left.`
@@ -268,6 +270,34 @@ function handleSendMessage(socket, data, stateManager, io) {
         message: "An error occurred while sending the message.",
       });
     }
+  }
+}
+
+/**
+ * 클라이언트의 참가자 목록 갱신 요청(refreshParticipantList 이벤트)을 처리합니다.
+ */
+async function handleRefreshParticipantList(socket, stateManager, ackCallback) {
+  try {
+    const socketId = socket.id;
+    const roomId = stateManager.getRoomIdBySocketId(socketId);
+
+    // 1. 방에 참가 중인지 확인
+    if (!roomId) {
+      ackCallback({ success: false, message: "You are not in a classroom." });
+      return;
+    }
+
+    // 2. 방에 참가 중인 사용자 목록 가져오기
+    const usersInRoom = stateManager.getUsersInClassroom(roomId);
+    const simplifiedUsers = usersInRoom.map((u) => ({
+      userId: u.userId,
+      username: u.username,
+    }));
+
+    // 3. 참가자 목록 갱신 응답
+    ackCallback({ success: true, users: simplifiedUsers });
+  } catch (error) {
+    ackCallback({ success: false, message: "An error occurred." });
   }
 }
 

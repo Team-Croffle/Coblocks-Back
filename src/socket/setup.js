@@ -100,6 +100,17 @@ function initializeSocket(io) {
       }
     });
 
+    // 'refreshParticipantList' 이벤트 리스너
+    socket.on(events.REFRESH_PARTICIPANT_LIST, (ackCallback) => {
+      if (stateManagerInstance) {
+        handlers.handleDisconnect(socket, stateManagerInstance, ackCallback);
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling REFRESH_PARTICIPANT_LIST."
+        );
+      }
+    });
+
     // 'sendMessage' 이벤트 리스너
     socket.on(events.SEND_MESSAGE, (data) => {
       if (stateManagerInstance && ioInstance) {
