@@ -6,6 +6,8 @@ module.exports = {
   LEAVE_CLASSROOM: "leaveClassroom",
   SEND_MESSAGE: "sendMessage",
 
+  REFRESH_PARTICIPANT_LIST: "refreshParticipantList",
+
   // 서버 -> 클라이언트
   JOIN_CLASSROOM_SUCCESS: "joinClassroomSuccess",
   USER_JOINED_CLASSROOM: "userJoinedClassroom",
