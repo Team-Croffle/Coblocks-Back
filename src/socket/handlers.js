@@ -391,6 +391,7 @@ async function handleDisconnect(socket, stateManager, io, reason) {
 module.exports = {
   handleJoinClassroom,
   handleSendMessage,
+  handleRefreshParticipantList,
   handleDisconnect,
   handleLeaveClassroom,
 };
