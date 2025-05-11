@@ -23,7 +23,19 @@ const io = new Server(server, {
   },
 });
 
-app.use(cors());
+const clientUrl = process.env.CLIENT_URL || "http://localhost:5173"; // 클라이언트 URL (환경변수에서 가져오거나 기본값 설정)
+
+const corsOptions = {
+  origin: clientUrl, // 여기서 clientUrl이 실제 요청을 보내는 프론트엔드 주소여야 함
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  allowedHeaders: "Content-Type,Authorization",
+  credentials: true, // Supabase Auth JWT 사용 시 Authorization 헤더를 주고받으므로 true가 필요할 수 있음
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
