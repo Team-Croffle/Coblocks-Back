@@ -43,10 +43,11 @@ function initializeSocket(io) {
         });
         return next(new Error("Authentication failed: Invalid token."));
       }
+      const decodedData = decoded.user_metadata;
 
       // 토큰 검증 성공: 디코딩된 정보에서 사용자 ID(sub) 등을 추출하여 소켓 객체에 저장
-      socket.userId = decoded.sub;
-      socket.userName = decoded.name;
+      socket.userId = decodedData.sub;
+      socket.userName = decodedData.nickName;
 
       logger.info(
         `[Socket Auth] Socket ${socket.id} authenticated. UserID: ${socket.userId}, Username: ${socket.userName}`
