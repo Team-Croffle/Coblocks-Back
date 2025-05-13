@@ -43,10 +43,11 @@ function initializeSocket(io) {
         });
         return next(new Error("Authentication failed: Invalid token."));
       }
+      const decodedData = decoded.user_metadata;
 
       // 토큰 검증 성공: 디코딩된 정보에서 사용자 ID(sub) 등을 추출하여 소켓 객체에 저장
-      socket.userId = decoded.sub;
-      socket.userName = decoded.name;
+      socket.userId = decodedData.sub;
+      socket.userName = decodedData.nickName;
 
       logger.info(
         `[Socket Auth] Socket ${socket.id} authenticated. UserID: ${socket.userId}, Username: ${socket.userName}`
@@ -100,6 +101,21 @@ function initializeSocket(io) {
       }
     });
 
+    // 'refreshParticipantList' 이벤트 리스너
+    socket.on(events.REFRESH_PARTICIPANT_LIST, (ackCallback) => {
+      if (stateManagerInstance) {
+        handlers.handleRefreshParticipantList(
+          socket,
+          stateManagerInstance,
+          ackCallback
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling REFRESH_PARTICIPANT_LIST."
+        );
+      }
+    });
+
     // 'sendMessage' 이벤트 리스너
     socket.on(events.SEND_MESSAGE, (data) => {
       if (stateManagerInstance && ioInstance) {
@@ -133,6 +149,30 @@ function initializeSocket(io) {
         logger.error(
           "[Socket.IO] instance not initialized when handling LEAVE_CLASSROOM."
         );
+      }
+    });
+
+    // 'editorContentChange' 이벤트 리스너
+    socket.on(events.EDITOR_CONTENT_CHANGE, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.EDITOR_CONTENT_CHANGE} from ${socket.id} (${socket.userId})`
+      );
+
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleEditorContentChange(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling EDITOR_CONTENT_CHANGE."
+        );
+
+        socket.emit(events.ERROR, {
+          message: "Server not ready to handle editor change",
+        });
       }
     });
   }); // io.on('connection', ...) 끝

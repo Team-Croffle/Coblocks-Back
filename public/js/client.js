@@ -1,7 +1,8 @@
 const BACKEND_URL = "http://localhost:3000";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL = "https://ihcibyphuejzpaziqlxj.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloY2lieXBodWVqenBhemlxbHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ3MTYxNDksImV4cCI6MjA2MDI5MjE0OX0.f2bV4c8cUaDLKYSWE2XYPkQvYddqipmmea-mgxYkeVs";
 
 let supabase = null;
 try {
@@ -198,7 +199,7 @@ function setupSocketListeners(socketInstance) {
 /**
  * 소켓 연결 및 참여 시작 함수
  */
-function connectAndJoin() {
+async function connectAndJoin() {
   if (!currentClassroomInfo || !currentClassroomId) {
     console.error(
       "No classroom info set before attempting to connect and join."
@@ -214,7 +215,7 @@ function connectAndJoin() {
   }
   socket = null;
 
-  const accessToken = getSupabaseAccessToken();
+  const accessToken = await getSupabaseAccessToken();
   if (!accessToken) {
     return;
   } // 액세스 토큰이 없으면 중단
