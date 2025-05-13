@@ -387,6 +387,54 @@ async function handleDisconnect(socket, stateManager, io, reason) {
   }
 }
 
+async function handleEditorContentChange(socket, data, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+
+  try {
+    const roomId = stateManager.getRoomIdBySocketId(socketId);
+    if (!roomId) {
+      logger.warn(`[Handler] no roomId found for socket ${socketId}`);
+      socket.emit(events.ERROR, {
+        message: "You are not currently in a classroom.",
+      });
+    }
+
+    // 현재 방의 정보 가져오기
+    const roomState = stateManager.rooms[roomId];
+    if (!roomState || !roomState.classroomDetails) {
+      logger.error(
+        `[Handler] No classroom details found for room ${roomId} during editor content change.`
+      );
+      socket.emit(events.ERROR, { message: "Room details not found." });
+      return;
+    }
+
+    if (!data || !data.state === undefined) {
+      logger.warn(
+        `[Handler] Invalid data received for editor content change from ${userId}(${socketId}).`
+      );
+      socket.emit(events.ERROR, { message: "Editor content is missing." });
+      return;
+    }
+
+    // 자신을 제외한 다른 참여자들에게 에디터 내용 브로드캐스트
+    logger.info(`[Handler] data:'`, data);
+    socket.to(roomId).emit(events.EDITOR_STATE_SYNC, data);
+    logger.info(
+      `[Handler] Editor state sync broadcasted to room ${roomId} from user ${userId}(${socketId}).`
+    );
+  } catch (error) {
+    logger.error(
+      `[Handler] Error in handleEditorContentChange for socket ${socketId}: ${error.message}`,
+      error
+    );
+    socket.emit(events.ERROR, {
+      message: "An error occurred while changing editor content.",
+    });
+  }
+}
+
 // module.exports 업데이트
 module.exports = {
   handleJoinClassroom,
@@ -394,4 +442,5 @@ module.exports = {
   handleRefreshParticipantList,
   handleDisconnect,
   handleLeaveClassroom,
+  handleEditorContentChange,
 };

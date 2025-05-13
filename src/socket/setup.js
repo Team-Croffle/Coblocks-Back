@@ -151,6 +151,30 @@ function initializeSocket(io) {
         );
       }
     });
+
+    // 'editorContentChange' 이벤트 리스너
+    socket.on(events.EDITOR_CONTENT_CHANGE, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.EDITOR_CONTENT_CHANGE} from ${socket.id} (${socket.userId})`
+      );
+
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleEditorContentChange(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling EDITOR_CONTENT_CHANGE."
+        );
+
+        socket.emit(events.ERROR, {
+          message: "Server not ready to handle editor change",
+        });
+      }
+    });
   }); // io.on('connection', ...) 끝
 
   logger.info(

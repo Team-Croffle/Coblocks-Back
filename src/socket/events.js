@@ -5,6 +5,7 @@ module.exports = {
   JOIN_CLASSROOM: "joinClassroom",
   LEAVE_CLASSROOM: "leaveClassroom",
   SEND_MESSAGE: "sendMessage",
+  EDITOR_CONTENT_CHANGE: "editorContentChange",
 
   REFRESH_PARTICIPANT_LIST: "refreshParticipantList",
 
@@ -16,6 +17,7 @@ module.exports = {
   CLASSROOM_MESSAGE: "classroomMessage",
   MESSAGE_ERROR: "messageError",
   CLASSROOM_DELETED: "classroomDeleted",
+  EDITOR_STATE_SYNC: "editorStateSync",
 
   // 공통/내장
   CONNECT: "connect",
