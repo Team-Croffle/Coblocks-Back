@@ -44,8 +44,14 @@ const createClassroom = async (req, res) => {
 const joinClassroomByCode = async (req, res) => {
   try {
     const userId = req.user.id; // JWT에서 사용자 ID 가져오기
-    const { code } = req.body;
+    const code = req.body.inviteCode;
 
+    logger.info(
+      `Received request to join classroom with code: ${code} by user ${userId}`
+    );
+    logger.info(
+      `Request body: ${JSON.stringify(req.body)}` // 요청 본문 로깅
+    );
     // 1. 입력 값 유효성 검사
     if (!code) {
       return res.status(400).json({
@@ -344,13 +350,23 @@ const leaveClassroom = async (req, res) => {
 
         // 남은 사용자들에게 퇴장 알림 및 갱신된 사용자 목록 발송
         io.to(roomId).emit(events.USER_LEFT_CLASSROOM, {
-          userId: userId,
-          username: username,
-          users: simplifiedUsers,
+          leftUser: {
+            userId: userId,
+            username: username,
+          },
         });
         logger.info(
           `[Controller API] Broadcasted USER_LEFT_CLASSROOM with ${simplifiedUsers.length} users to room ${roomId} after user ${userId} left via API.`
         );
+
+        const leavingUserSocket = io.sockets.sockets.get(socketId);
+        if (leavingUserSocket) {
+          leavingUserSocket.leave(classroomId); // 해당 Room에서 먼저 나가도록 함
+          leavingUserSocket.disconnect(true); // 그 다음 소켓 연결 자체를 종료
+          logger.info(
+            `[Controller API] Force disconnected socket ${socketId} for user ${userId} after leaving room ${classroomId}.`
+          );
+        }
       }
       // 성공 응답 (200 OK)
       res

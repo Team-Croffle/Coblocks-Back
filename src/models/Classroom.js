@@ -71,18 +71,18 @@ class Classroom {
   // 반환값: boolean (삭제 성공 여부)
   static async delete(classroom_id) {
     logger.info(
-      `Attempting to delete classroom ${classroomId} via RPC function 'delete_classroom_securely'.`
+      `Attempting to delete classroom ${classroom_id} via RPC function 'delete_classroom_securely'.`
     );
     try {
       // 삭제된 행의 수를 확인하기 위해 select()를 사용합니다.
-      const { error } = await supabase.rpc("delete_classroom_securely", {
+      const { error } = await supabase.rpc("handle_delete_classroom", {
         target_classroom_id: classroom_id,
       });
 
       if (error) {
         // RPC 호출 시 발생할 수 있는 다양한 오류들 (예: 함수 없음, 권한 없음, 함수 내부 오류 등)
         logger.error(
-          `Supabase RPC error deleting classroom ${classroomId}: ${error.message}`,
+          `Supabase RPC error deleting classroom ${classroom_id}: ${error.message}`,
           error
         );
         throw error; // 오류를 다시 던져서 컨트롤러에서 처리하도록 함
@@ -90,18 +90,18 @@ class Classroom {
 
       // Security Definer 함수가 void를 반환하고 오류가 없으면 성공으로 간주
       logger.info(
-        `Classroom ${classroomId} deletion RPC call executed successfully.`
+        `Classroom ${classroom_id} deletion RPC call executed successfully.`
       );
       return true; // 함수 호출 성공 (실제 삭제 여부는 DB 함수 로직에 따름)
     } catch (error) {
       // 여기서 잡히는 오류는 rpc 호출 실패 또는 위에서 던진 error
       logger.error(
-        `Error in Classroom.delete (RPC) for ${classroomId}: ${error.message}`
+        `Error in Classroom.delete (RPC) for ${classroom_id}: ${error.message}`
       );
       // 컨트롤러가 이 에러를 받아 500 응답 등을 할 수 있도록 다시 던짐
       // 이전처럼 false를 반환하는 대신 에러를 던지는 것이 더 명확할 수 있음
       throw new Error(
-        `Failed to execute delete_classroom_securely RPC: ${error.message}`
+        `Failed to execute handle_delete_classroom RPC: ${error.message}`
       );
     }
   }
