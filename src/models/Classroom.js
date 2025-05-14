@@ -31,7 +31,7 @@ class Classroom {
     }
 
     try {
-      const { error } = await supabase.rpc("handle_create_classroom", {
+      const { data, error } = await supabase.rpc("handle_create_classroom", {
         p_classroom_id: classroom_id,
         p_classroom_code: classroom_code,
         p_manager_users_id: manager_users_id,
