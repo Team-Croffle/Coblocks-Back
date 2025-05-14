@@ -31,18 +31,12 @@ class Classroom {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("classroom")
-        .insert([
-          {
-            classroom_id: classroom_id, // UUID
-            classroom_code: classroom_code, // 생성된 고유 코드
-            manager_users_id: manager_users_id,
-            classroom_name: classroom_name,
-          },
-        ])
-        .select() // 삽입된 전체 행 데이터 반환 요청
-        .single(); // 한 행만 삽입했으므로 single() 사용
+      const { error } = await supabase.rpc("handle_create_classroom", {
+        p_classroom_id: classroom_id,
+        p_classroom_code: classroom_code,
+        p_manager_users_id: manager_users_id,
+        p_classroom_name: classroom_name,
+      });
 
       if (error) {
         console.error("Supabase insert error:", error);
