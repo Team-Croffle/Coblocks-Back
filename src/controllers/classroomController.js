@@ -1,4 +1,5 @@
 const Classroom = require("../models/Classroom");
+const Quest = require("../models/Quest");
 const { getStateManager, getIo } = require("../socket/setup");
 const logger = require("../utils/logger");
 const events = require("../socket/events");
@@ -394,9 +395,42 @@ const leaveClassroom = async (req, res) => {
   }
 };
 
+const getQuestList = async (req, res) => {
+  logger.info(
+    `[ClassroomController] User requested quest information (problem list).`
+  );
+
+  try {
+    const questSummary = await Quest.getAllQuestSummaries(); // 모든 퀘스트 요약 정보 가져오기
+
+    if (!questSummary) {
+      return res.status(404).json({
+        success: false,
+        message: "No quest information found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Quest information retrieved successfully.",
+      questSummary: questSummary,
+    });
+  } catch (error) {
+    logger.error(
+      `[ClassroomController] Error retrieving quest information for user : ${error.message}`,
+      error
+    );
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve quest information due to a server error.",
+    });
+  }
+};
+
 module.exports = {
   createClassroom,
   joinClassroomByCode,
   deleteClassroom,
   leaveClassroom,
+  getQuestList,
 };
