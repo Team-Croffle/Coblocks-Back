@@ -38,14 +38,38 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
       });
       return;
     }
-
+    
+    // 강의실 정보 추출
     const classroomId = classroomDetails.classroom_id;
     const classroomCode = classroomDetails.classroom_code;
     const isManager = userId === classroomDetails.manager_users_id;
+    
+    // 개설자가 아닌 경우 최대 인원 제한 확인
+    if (!isManager && stateManager.roomManager.getRoom(classroomId)) {
+      // 이미 존재하는 방에 일반 사용자로 참여하는 경우
+      if (!stateManager.roomManager.canJoinRoom(classroomId)) {
+        logger.warn(
+          `[Handler] Join denied for user ${userId}(${socketId}) to room ${classroomId}: Maximum capacity (4) reached.`
+        );
+        socket.emit(events.JOIN_CLASSROOM_SUCCESS, {
+          success: false,
+          message: "Cannot join: Classroom has reached maximum capacity of 4 users.",
+        });
+        return;
+      }
+    }
 
     logger.info(
       `[Handler] User ${userId}(${username}, ${socketId}) attempting to join room ${classroomId} (${classroomCode}). Manager: ${isManager}`
     );
+    
+    // 현재 방 참여자 수 로깅
+    if (stateManager.roomManager.getRoom(classroomId)) {
+      const currentUserCount = stateManager.roomManager.getUserCount(classroomId);
+      logger.info(
+        `[Handler] Current user count in room ${classroomId}: ${currentUserCount}/4`
+      );
+    }
 
     const addResult = stateManager.addUser(
       socketId,
@@ -93,6 +117,8 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
       classroom: classroomDetails,
       users: simplifiedUsers, // 간소화된 목록 전달
       isManager: isManager,
+      userCount: simplifiedUsers.length,
+      maxUsers: 4, // 최대 인원 정보 추가
     });
 
     // 7. 다른 사용자들에게 참여 알림 (USER_JOINED_CLASSROOM)
@@ -101,6 +127,8 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
         userId: userId,
         username: username, // 05/11 추가
       },
+      userCount: simplifiedUsers.length,
+      maxUsers: 4,
     });
     logger.info(
       `[Handler] Broadcasted USER_JOINED_CLASSROOM with ${simplifiedUsers.length} users to room ${classroomId}.`
@@ -196,6 +224,8 @@ async function handleLeaveClassroom(socket, data, stateManager, io) {
           userId: userId,
           username: username,
         },
+        userCount: simplifiedUsers.length,
+        maxUsers: 4,
       });
       logger.info(
         `[Handler] Broadcasted USER_LEFT_CLASSROOM with ${simplifiedUsers.length} users to room ${roomId} after user ${userId} left.`
@@ -294,8 +324,13 @@ async function handleRefreshParticipantList(socket, stateManager, ackCallback) {
       username: u.username,
     }));
 
-    // 3. 참가자 목록 갱신 응답
-    ackCallback({ success: true, users: simplifiedUsers });
+    // 3. 참가자 목록 갱신 응답 (최대 인원 정보 포함)
+    ackCallback({ 
+      success: true, 
+      users: simplifiedUsers,
+      userCount: simplifiedUsers.length,
+      maxUsers: 4
+    });
   } catch (error) {
     ackCallback({ success: false, message: "An error occurred." });
   }
@@ -365,9 +400,13 @@ async function handleDisconnect(socket, stateManager, io, reason) {
           username: u.username,
         }));
         io.to(roomId).emit(events.USER_LEFT_CLASSROOM, {
-          userId: userId,
-          username: username,
+          leftUser: {
+            userId: userId,
+            username: username,
+          },
           users: simplifiedUsers,
+          userCount: simplifiedUsers.length,
+          maxUsers: 4,
         });
         logger.info(
           `[Handler] Broadcasted USER_LEFT_CLASSROOM with ${simplifiedUsers.length} users to room ${roomId} after user ${userId} disconnected.`
