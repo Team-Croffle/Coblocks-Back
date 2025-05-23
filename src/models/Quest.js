@@ -43,7 +43,7 @@ class Quest {
     logger.info(`[Model Quest] Attempting to fetch quest with ID: ${questId}`);
     try {
       const { data, error } = await supabase.rpc("get_quest_for_solving", {
-        questId: questId,
+        p_quest_id: questId,
       });
 
       if (error) {
@@ -53,10 +53,16 @@ class Quest {
         throw error;
       }
 
-      if (!data) {
-        logger.error(`[Model Quest] No quest found with ID: ${questId}`);
-        throw new Error("Quest not found");
+      if (!data || (Array.isArray(data) && data.length === 0)) {
+        logger.warn(
+          `[Model Quest] No quest found or empty data for ID: ${questId}`
+        );
+        return null; // 또는 throw new Error("Quest not found");
       }
+      logger.info(
+        `[Model Quest] Successfully fetched quest with ID: ${questId}`
+      );
+      return data;
     } catch (error) {
       logger.error(
         `[Model Quest] Error in getQuestById for ID ${questId}: ${error.message}`
