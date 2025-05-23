@@ -23,6 +23,9 @@ class RoomManager {
         managerSocketId: socketId, // 개설자 소켓 ID 설정
         classroomCode: classroomCode, // 강의실 코드 저장
         classroomDetails: classroomDetails, // 강의실 상세 정보 객체 저장
+        users: {},
+        currentQuestId: null, // 현재 퀘스트 ID
+        currentQuestDetails: null, // DB에서 원본 객체 전체 저장
       };
       this.classroomManagerMap[classroomId] = socketId; // 활성 세션으로 표시
       return true;
@@ -48,21 +51,23 @@ class RoomManager {
       );
       return;
     }
-    
+
     logger.info(
       `[RoomManager] Starting session state cleanup for classroom ${classroomId}.`
     );
-    
+
     // 모든 사용자의 매핑 정보 제거
     Object.keys(room.users).forEach((sockId) => {
       delete userRoomMap[sockId];
     });
-    
+
     // 강의실 관련 상태 정보 제거
     delete this.classroomManagerMap[classroomId];
     delete this.rooms[classroomId];
-    
-    logger.info(`[RoomManager] State cleanup complete for classroom ${classroomId}.`);
+
+    logger.info(
+      `[RoomManager] State cleanup complete for classroom ${classroomId}.`
+    );
   }
 
   /**
@@ -85,29 +90,37 @@ class RoomManager {
   }
 
   /**
-   * 강의실의 관리자 소켓 ID를 반환합니다.
-   */
-  getManagerSocketId(classroomId) {
-    return this.rooms[classroomId]?.managerSocketId || null;
-  }
-  
-  /**
    * 강의실의 현재 참여자 수를 반환합니다.
    */
   getUserCount(classroomId) {
     if (!this.rooms[classroomId]) return 0;
     return Object.keys(this.rooms[classroomId].users).length;
   }
-  
+
   /**
    * 강의실에 새 사용자가 참여할 수 있는지 확인합니다.
    * @returns {boolean} 참여 가능 여부
    */
   canJoinRoom(classroomId) {
     if (!this.rooms[classroomId]) return false;
-    
+
     const currentUserCount = this.getUserCount(classroomId);
     return currentUserCount < this.maxUsersPerRoom;
+  }
+
+  setSelectedQuest(classroomId, questDetailsFromDB) {
+    const room = this.rooms[classroomId];
+    if (room) {
+      room.currentQuestId = questDetailsFromDB.quest_id;
+      room.currentQuestDetails = questDetailsFromDB;
+      logger.info(
+        `[RoomManager] Problem ${room.currentQuestId} (raw) stored for room ${classroomId}.`
+      );
+    } else {
+      logger.warn(
+        `[RoomManager] Attempted to set problem for non-existent room ${classroomId}`
+      );
+    }
   }
 }
 

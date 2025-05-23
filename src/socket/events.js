@@ -23,7 +23,7 @@ module.exports = {
   CLASSROOM_DELETED: "classroomDeleted",
   EDITOR_STATE_SYNC: "editorStateSync", // 폐기?
   // 문제 관련
-  PROBLEM_SELCTED_INFO: "problemSelectedInfo", // 선택된 문제 정보 전달
+  PROBLEM_SELECTED_INFO: "problemSelectedInfo", // 선택된 문제 정보 전달
   ACTIVITY_BEGIN: "activityBegin", // 문제 풀이 시작
 
   // 공통/내장

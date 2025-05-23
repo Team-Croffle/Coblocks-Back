@@ -175,6 +175,25 @@ function initializeSocket(io) {
         });
       }
     });
+
+    socket.on(events.SELECT_PROBLEM_SET, (data) => {
+      logger.info(
+        `[Socket.IO] Recevied ${events.SELECT_PROBLEM_SET} from ${socket.id} (${socket.userId})`
+      );
+      // data는 { quest_id: UUID } 형태로 들어옴
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleSelectProblemSet(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling SELECT_PROBLEM_SET."
+        );
+      }
+    });
   }); // io.on('connection', ...) 끝
 
   logger.info(

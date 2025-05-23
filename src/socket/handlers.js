@@ -1,6 +1,7 @@
 const logger = require("../utils/logger");
 const events = require("./events");
 const Classroom = require("../models/Classroom"); // DB 삭제 위해 모델 필요
+const Quest = require("../models/Quest");
 
 // stateManager, io는 setup.js에서 인자로 전달받음
 
@@ -38,12 +39,12 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
       });
       return;
     }
-    
+
     // 강의실 정보 추출
     const classroomId = classroomDetails.classroom_id;
     const classroomCode = classroomDetails.classroom_code;
     const isManager = userId === classroomDetails.manager_users_id;
-    
+
     // 개설자가 아닌 경우 최대 인원 제한 확인
     if (!isManager && stateManager.roomManager.getRoom(classroomId)) {
       // 이미 존재하는 방에 일반 사용자로 참여하는 경우
@@ -53,7 +54,8 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
         );
         socket.emit(events.JOIN_CLASSROOM_SUCCESS, {
           success: false,
-          message: "Cannot join: Classroom has reached maximum capacity of 4 users.",
+          message:
+            "Cannot join: Classroom has reached maximum capacity of 4 users.",
         });
         return;
       }
@@ -62,10 +64,11 @@ async function handleJoinClassroom(socket, data, stateManager, io) {
     logger.info(
       `[Handler] User ${userId}(${username}, ${socketId}) attempting to join room ${classroomId} (${classroomCode}). Manager: ${isManager}`
     );
-    
+
     // 현재 방 참여자 수 로깅
     if (stateManager.roomManager.getRoom(classroomId)) {
-      const currentUserCount = stateManager.roomManager.getUserCount(classroomId);
+      const currentUserCount =
+        stateManager.roomManager.getUserCount(classroomId);
       logger.info(
         `[Handler] Current user count in room ${classroomId}: ${currentUserCount}/4`
       );
@@ -325,11 +328,11 @@ async function handleRefreshParticipantList(socket, stateManager, ackCallback) {
     }));
 
     // 3. 참가자 목록 갱신 응답 (최대 인원 정보 포함)
-    ackCallback({ 
-      success: true, 
+    ackCallback({
+      success: true,
       users: simplifiedUsers,
       userCount: simplifiedUsers.length,
-      maxUsers: 4
+      maxUsers: 4,
     });
   } catch (error) {
     ackCallback({ success: false, message: "An error occurred." });
@@ -426,6 +429,7 @@ async function handleDisconnect(socket, stateManager, io, reason) {
   }
 }
 
+// 클라이언트의 에디터 내용 변경 요청(editorContentChange 이벤트)을 처리합니다. // 폐기?
 async function handleEditorContentChange(socket, data, stateManager, io) {
   const socketId = socket.id;
   const userId = socket.userId;
@@ -474,6 +478,82 @@ async function handleEditorContentChange(socket, data, stateManager, io) {
   }
 }
 
+async function handleSelectProblemSet(socket, data, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+  const { quest_id } = data;
+
+  if (!quest_id) {
+    logger.warn(
+      `[Handler SelectProblemSet] Missing quest_id from <span class="math-inline">\{userId\}\(</span>{socketId}).`
+    );
+    socket.emit(events.ERROR, { message: "Quest ID is required." });
+    return;
+  }
+
+  const roomId = stateManager.getRoomIdBySocketId(socketId);
+  if (!roomId) {
+    logger.warn(`[Handler] no roomId found for socket ${socketId}`);
+    socket.emit(events.ERROR, {
+      message: "You are not currently in a classroom.",
+    });
+    return;
+  }
+
+  const roomManager = stateManager.roomManager;
+  const room = roomManager.getRoom(roomId);
+
+  if (!room) {
+    logger.warn(
+      `[Handler SelectProblemSet] Room ${roomId} not found for user <span class="math-inline">\{userId\}\(</span>{socketId}).`
+    );
+    socket.emit(events.ERROR, { message: "Classroom session not found." });
+    return;
+  }
+
+  // 개설자 권한 확인
+  if (room.managerSocketId !== socketId) {
+    logger.warn(
+      `[Handler SelectProblemSet] User <span class="math-inline">\{userId\}\(</span>{socketId}) is not the manager of room ${roomId}. Attempted to select problem.`
+    );
+    socket.emit(events.ERROR, {
+      message: "Only the manager can select a problem.",
+    });
+    return;
+  }
+
+  // 문제 정보 가져오기
+  try {
+    const quest = await Quest.findQuestById(quest_id);
+    if (!quest) {
+      logger.error(
+        `[Handler] No questInfo found for ID ${data.quest_id} during problem set selection.`
+      );
+      socket.emit(events.ERROR, { message: "Quest not found." });
+      return;
+    }
+
+    // RoomManager 상태 업데이트 (선택된 문제 저장)
+    roomManager.setSelectedQuest(roomId, quest);
+
+    // 문제 세트 정보 저장
+    const payload = { questInfo: quest };
+
+    io.to(roomId).emit(events.PROBLEM_SELECTED_INFO, payload);
+    logger.info(
+      `[Handler SelectProblemSet] Problem ${quest_id} selected in room ${roomId} by manager ${userId}. Info (raw) broadcasted.`
+    );
+  } catch (error) {
+    logger.error(
+      `[Handler SelectProblemSet] Error processing quest selection for ${quest_id} in room ${roomId}: ${error.message}`,
+      error
+    );
+    socket.emit(events.ERROR, {
+      message: "Failed to select problem due to a server error.",
+    });
+  }
+}
+
 // module.exports 업데이트
 module.exports = {
   handleJoinClassroom,
@@ -482,4 +562,5 @@ module.exports = {
   handleDisconnect,
   handleLeaveClassroom,
   handleEditorContentChange,
+  handleSelectProblemSet,
 };
