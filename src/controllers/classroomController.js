@@ -404,6 +404,9 @@ const getQuestList = async (req, res) => {
     const questSummary = await Quest.getAllQuestSummaries(); // 모든 퀘스트 요약 정보 가져오기
 
     if (!questSummary) {
+      logger.warn(
+        "[ClassroomController] No quests found or Quest.getAllQuests returned null/undefined."
+      );
       return res.status(404).json({
         success: false,
         message: "No quest information found.",
