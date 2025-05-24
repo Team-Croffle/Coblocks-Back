@@ -478,6 +478,7 @@ async function handleEditorContentChange(socket, data, stateManager, io) {
   }
 }
 
+// 클라이언트의 문제 세트 선택 요청(selectProblemSet 이벤트)을 처리합니다.
 async function handleSelectProblemSet(socket, data, stateManager, io) {
   const socketId = socket.id;
   const userId = socket.userId;
@@ -554,6 +555,301 @@ async function handleSelectProblemSet(socket, data, stateManager, io) {
   }
 }
 
+// 클라이언트의 문제 풀이 시작 요청(startActivity 이벤트)을 처리합니다.
+async function handleStartActivity(socket, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+  const username = socket.userName; // 소켓 인증 시 저장된 사용자 이름
+
+  const roomId = stateManager.getRoomIdBySocketId(socketId);
+  if (!roomId) {
+    logger.warn(
+      `[Handler StartActivity] User ${userId}(${socketId}, ${username}) not in a room.`
+    );
+    socket.emit(events.ERROR, { message: "You are not in a classroom." });
+    return;
+  }
+
+  const roomManager = stateManager.roomManager; // RoomManager 인스턴스 접근
+  const room = roomManager.getRoom(roomId);
+  if (!room) {
+    logger.warn(
+      `[Handler StartActivity] Room ${roomId} not found for user ${userId}(${socketId}, ${username}).`
+    );
+    socket.emit(events.ERROR, { message: "Classroom session not found." });
+    return;
+  }
+
+  // 1. 개설자 권한 확인
+  if (room.managerSocketId !== socketId) {
+    logger.warn(
+      `[Handler StartActivity] User ${userId}(${socketId}, ${username}) is not the manager of room ${roomId}.`
+    );
+    socket.emit(events.ERROR, {
+      message: "Only the manager can start the activity.",
+    });
+    return;
+  }
+
+  // 2. 이미 활동이 시작되었는지 확인
+  if (room.activityStarted) {
+    logger.warn(
+      `[Handler StartActivity] Activity already started in room ${roomId}. Request by ${userId}(${socketId}, ${username}).`
+    );
+    // 이미 시작되었다는 것을 알려주거나, 무시할 수 있습니다. 여기서는 에러로 처리.
+    socket.emit(events.ERROR, { message: "Activity has already started." });
+    return;
+  }
+
+  // 3. 문제가 선택되었는지 확인
+  if (!room.currentQuestId || !room.currentQuestDetails) {
+    logger.warn(
+      `[Handler StartActivity] No problem selected in room ${roomId} to start activity. Request by ${userId}(${socketId}, ${username}).`
+    );
+    socket.emit(events.ERROR, {
+      message: "A problem must be selected before starting the activity.",
+    });
+    return;
+  }
+
+  // 4. 현재 참여자 목록 가져오기
+  const participants = stateManager.getUsersInClassroom(roomId); // [{userId, username, socketId}, ...]
+  if (participants.length === 0) {
+    logger.warn(
+      `[Handler StartActivity] No participants in room ${roomId} to start activity. Request by ${userId}(${socketId}, ${username}).`
+    );
+    socket.emit(events.ERROR, {
+      message: "There are no participants to start the activity with.",
+    });
+    return;
+  }
+
+  // 5. 참여자들에게 파트 번호 배정
+  //    (예: 단순 참여 순서대로 1, 2, 3, 4... 배정. 최대 4명이라고 가정)
+  const assignments = participants.map((participant, index) => {
+    return {
+      userId: participant.userId,
+      username: participant.username,
+      socketId: participant.socketId,
+      partNumber: index + 1, // 1부터 시작하는 파트 번호
+    };
+  });
+
+  // 6. RoomManager 상태 업데이트 (활동 시작 플래그, 파트 배정 정보 저장)
+  roomManager.setActivityStateAndAssignments(roomId, true, assignments); // isStarted: true
+
+  // 7. 각 참여자에게 ACTIVITY_BEGAN 이벤트 개별 전송
+  assignments.forEach((assignment) => {
+    const targetSocketId = assignment.socketId;
+    const assignedPartNumber = assignment.partNumber;
+    const questDetails = room.currentQuestDetails; // RoomManager에 저장된 원본 문제 정보
+
+    let finalQuestContentForUser; // 참여자에게 전달될 최종 문제(Blockly) 정보 JSON
+    let finalQuestQuestionForUser; // 참여자에게 전달될 최종 문제 설명 (문자열?)
+
+    if (questDetails.quest_context.is_equal == true) {
+      // 공통 문제
+      finalQuestContentForUser =
+        questDetails.quest_context.player1 || questDetails.quest_context.common;
+      finalQuestQuestionForUser = questDetails.quest_question; // question이 문자열이라고 가정
+    } else {
+      // 개인 문제
+      const playerKey = `player${assignedPartNumber}`;
+      finalQuestContentForUser = questDetails.quest_context[playerKey];
+
+      // quest_question도 객체이므로, playerKey로 해당 설명을 가져옴
+      finalQuestQuestionForUser = questDetails.quest_question[playerKey];
+    }
+
+    // 안전장치: 만약 해당 playerKey에 대한 정보가 없다면 기본값 또는 에러 처리
+    if (finalQuestContentForUser === undefined) {
+      logger.warn(
+        `[Handler StartActivity] Blockly content for ${playerKey} not found in quest ${questDetails.quest_id}. Room: ${roomId}`
+      );
+      finalQuestContentForUser = {}; // 빈 객체 또는 기본 Blockly 상태
+    }
+    if (finalQuestQuestionForUser === undefined) {
+      logger.warn(
+        `[Handler StartActivity] Question text for ${playerKey} not found in quest ${questDetails.quest_id}. Room: ${roomId}`
+      );
+      finalQuestQuestionForUser = "문제 설명을 가져올 수 없습니다."; // 기본 메시지
+    }
+
+    const payload = {
+      questInfo: {
+        // 공통 정보
+        id: questDetails.quest_id,
+        overall_description: questDetails.quest_description, // 문제의 전체적인 제목/설명
+        difficulty: questDetails.quest_difficulty,
+        type: questDetails.quest_type,
+        is_equal: questDetails.quest_context.is_equal,
+
+        // 참여자별 개별화된 정보
+        blockly_workspace: finalQuestContentForUser, // 해당 파트의 Blockly 정보 (JSON 객체)
+        detailed_question: finalQuestQuestionForUser, // 해당 파트의 문제 설명 (문자열)
+        default_stage: questDetails.default_stage, // Blockly 기본 세팅 (공통으로 가정)
+      },
+      myPartNumber: assignedPartNumber,
+      allParticipantAssignments: assignments,
+    };
+
+    io.to(targetSocketId).emit(events.ACTIVITY_BEGIN, payload); // events.js에 정의된 이벤트 이름 사용
+  });
+
+  logger.info(
+    `[Handler StartActivity] Activity successfully started in room ${roomId} by manager ${userId}(${socketId}, ${username}). Parts assigned and events sent to ${assignments.length} participants.`
+  );
+}
+
+// 클라이언트의 문제 풀이 제출 요청(submitSolution 이벤트)을 처리합니다.
+async function handleSubmitSolution(socket, data, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+  const username = socket.userName;
+
+  // 1. 입력 데이터 유효성 검사
+  if (!data || data.submissionContent === undefined) {
+    // submissionContent가 null일 수도 있으므로 undefined와 비교
+    logger.warn(
+      `[Handler SubmitSolution] Invalid data from ${userId}(${socketId}, ${username}). Missing submissionContent.`
+    );
+    socket.emit(events.ERROR, { message: "Submission content is missing." });
+    return;
+  }
+  const submissionContent = data.submissionContent; // client가 보낸 문제
+
+  // 2. 사용자가 현재 유효한 방에 있는지, 활동이 시작되었는지 확인
+  const roomId = stateManager.getRoomIdBySocketId(socketId);
+  if (!roomId) {
+    logger.warn(
+      `[Handler SubmitSolution] User ${userId}(${socketId}, ${username}) not in a room.`
+    );
+    socket.emit(events.ERROR, {
+      message: "You are not currently in a classroom.",
+    });
+    return;
+  }
+
+  const roomManager = stateManager.roomManager;
+  const room = roomManager.getRoom(roomId);
+
+  if (!room) {
+    // 이 경우는 거의 없어야 함 (getRoomIdBySocketId가 roomId를 반환했다면)
+    logger.error(
+      `[Handler SubmitSolution] Room ${roomId} not found in RoomManager despite user ${userId}(${socketId}, ${username}) being mapped to it.`
+    );
+    socket.emit(events.ERROR, { message: "Classroom session not found." });
+    return;
+  }
+
+  if (!room.activityStarted) {
+    logger.warn(
+      `[Handler SubmitSolution] Activity not started in room ${roomId}. Submission attempt by ${userId}(${socketId}, ${username}).`
+    );
+    socket.emit(events.ERROR, { message: "Activity has not started yet." });
+    return;
+  }
+
+  // 3. 사용자의 파트 번호 확인 (RoomManager에 저장된 participantAssignments 사용)
+  const assignment = room.participantAssignments.find(
+    (a) => a.userId === userId
+  );
+  if (!assignment) {
+    logger.warn(
+      `[Handler SubmitSolution] User ${userId}(${socketId}, ${username}) has no part assignment in room ${roomId}.`
+    );
+    socket.emit(events.ERROR, {
+      message: "You do not have an assigned part for this activity.",
+    });
+    return;
+  }
+  const partNumber = assignment.partNumber;
+
+  // 4. RoomManager를 통해 제출물 저장/업데이트
+  try {
+    // RoomManager.updateUserSubmission 메소드는 (classroomId, userId, submissionContent) 인자를 받음
+    const submissionSuccessful = roomManager.updateUserSubmission(
+      roomId,
+      userId,
+      partNumber,
+      submissionContent
+    );
+    logger.info(
+      `[Handler SubmitSolution] User(${username}, Part ${partNumber}) successfully submitted solution in room ${roomId}.`
+    );
+
+    // 5. 제출 성공 응답 (SUBMIT_SOLUTION_SUCCESS)
+    io.to(roomId).emit(events.SUBMIT_SOLUTION_SUCCESS, {
+      username: username,
+      partNumber: partNumber,
+      message: `${username} has submitted their solution for Part ${partNumber}.`,
+    });
+  } catch (error) {
+    logger.error(
+      `[Handler SubmitSolution] Failed to update submission for user ${userId}(${username}, Part ${partNumber}) in room ${roomId}: ${error.message}`
+    );
+    socket.emit(events.ERROR, {
+      success: false,
+      message: "Failed to save your submission. Please try again.",
+    });
+  }
+}
+
+// 클라이언트의 최종 제출 요청(requestFinalSubmission 이벤트)을 처리합니다.
+async function handleRequestFinalSubmission(socket, data, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+  const username = socket.userName;
+
+  // 1. 사용자가 현재 유효한 방에 있는지 확인
+  const roomId = stateManager.getRoomIdBySocketId(socketId);
+  if (!roomId) {
+    logger.warn(
+      `[Handler RequestFinalSubmission] User ${userId}(${socketId}, ${username}) not in a room.`
+    );
+    socket.emit(events.ERROR, {
+      message: "You are not currently in a classroom.",
+    });
+    return;
+  }
+
+  // 2. 방 정보 가져오기
+  const roomManager = stateManager.roomManager;
+  const room = roomManager.getRoom(roomId);
+  if (!room) {
+    logger.warn(
+      `[Handler RequestFinalSubmission] Room ${roomId} not found for user ${userId}(${socketId}, ${username}).`
+    );
+    socket.emit(events.ERROR, { message: "Classroom session not found." });
+    return;
+  }
+
+  // 3. 개설자 권한 확인
+  if (room.managerSocketId !== socketId) {
+    logger.warn(
+      `[Handler RequestFinalSubmission] User ${userId}(${socketId}, ${username}) is not the manager of room ${roomId}.`
+    );
+    socket.emit(events.ERROR, {
+      message: "Only the manager can request final submissions.",
+    });
+    return;
+  }
+
+  // 4. RoomManager를 통해 모든 참여자의 제출물 가져오기
+  const allSubmissions = roomManager.getAllSubmissionsForRoom(roomId);
+  // allSubmissions의 형태: { "userId1": { partNumber: 1, content: "..."  }, ... }
+
+  // 5. 모든 참여자에게 FINAL_SUBMISSIONS_DATA 이벤트 브로드캐스트
+  const payload = {
+    finalSubmissions: allSubmissions,
+  };
+
+  io.to(roomId).emit(events.FINAL_SUBMISSIONS_DATA, payload);
+  logger.info(
+    `[Handler ReqFinalSub] Final submissions data for room ${roomId} broadcasted by manager ${userId}(${socketId}, ${username}).`
+  );
+}
+
 // module.exports 업데이트
 module.exports = {
   handleJoinClassroom,
@@ -563,4 +859,7 @@ module.exports = {
   handleLeaveClassroom,
   handleEditorContentChange,
   handleSelectProblemSet,
+  handleStartActivity,
+  handleSubmitSolution,
+  handleRequestFinalSubmission,
 };

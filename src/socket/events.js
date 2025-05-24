@@ -9,6 +9,8 @@ module.exports = {
   // 문제 관련
   SELECT_PROBLEM_SET: "selectProblemSet", // 문제 선택
   START_ACTIVITY: "startActivity", // 문제 풀이 시작
+  SUBMIT_SOLUTION: "submitSolution", // 문제 제출(개별 제출)
+  REQUEST_FINAL_SUBMISSION: "requestFinalSubmission", // 최종 제출 요청
 
   //서버 <-> 클라이언트
   REFRESH_PARTICIPANT_LIST: "refreshParticipantList",
@@ -25,6 +27,8 @@ module.exports = {
   // 문제 관련
   PROBLEM_SELECTED_INFO: "problemSelectedInfo", // 선택된 문제 정보 전달
   ACTIVITY_BEGIN: "activityBegin", // 문제 풀이 시작
+  SUBMIT_SOLUTION_SUCCESS: "submitSolutionSuccess", // 문제 제출(개별 제출) 성공
+  FINAL_SUBMISSIONS_DATA: "finalSubmissionsData", // 최종 문제 제출 데이터 전달
 
   // 공통/내장
   CONNECT: "connect",

@@ -194,6 +194,58 @@ function initializeSocket(io) {
         );
       }
     });
+
+    socket.on(events.START_ACTIVITY, () => {
+      logger.info(
+        `[Socket.IO] Received ${events.START_ACTIVITY} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleStartActivity(socket, stateManagerInstance, ioInstance);
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling START_ACTIVITY."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
+
+    socket.on(events.SUBMIT_SOLUTION, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.SUBMIT_SOLUTION} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleSubmitSolution(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling SUBMIT_SOLUTION."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
+
+    socket.on(events.REQUEST_FINAL_SUBMISSION, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.REQUEST_FINAL_SUBMISSION} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleRequestFinalSubmission(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling REQUEST_FINAL_SUBMISSION."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
   }); // io.on('connection', ...) 끝
 
   logger.info(

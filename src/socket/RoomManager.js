@@ -23,9 +23,11 @@ class RoomManager {
         managerSocketId: socketId, // 개설자 소켓 ID 설정
         classroomCode: classroomCode, // 강의실 코드 저장
         classroomDetails: classroomDetails, // 강의실 상세 정보 객체 저장
-        users: {},
         currentQuestId: null, // 현재 퀘스트 ID
         currentQuestDetails: null, // DB에서 원본 객체 전체 저장
+        activityStarted: false, //활동 시작 여부 추가
+        participantAssignments: [], // 참여자 파트 배정 정보 추가
+        participantSubmissions: {}, // 제출된 문제 저장
       };
       this.classroomManagerMap[classroomId] = socketId; // 활성 세션으로 표시
       return true;
@@ -108,6 +110,7 @@ class RoomManager {
     return currentUserCount < this.maxUsersPerRoom;
   }
 
+  // 선택된 문제정보 저장
   setSelectedQuest(classroomId, questDetailsFromDB) {
     const room = this.rooms[classroomId];
     if (room) {
@@ -122,6 +125,77 @@ class RoomManager {
       );
     }
   }
+
+  // 활동 상태 및 참여자 파트 배정 정보 설정/업데이트
+  setActivityStateAndAssignments(classroomId, started, assignments = []) {
+    const room = this.getRoom(classroomId);
+    if (room) {
+      room.activityStarted = started;
+      room.participantAssignments = started ? assignments : []; // 활동 시작 시 배정, 종료 시 초기화
+
+      if (started) {
+        logger.info(
+          `[RoomManager] Activity set to ${started} with ${assignments.length} assignments in room ${classroomId}.`
+        );
+      } else {
+        logger.info(
+          `[RoomManager] Activity reset in room ${classroomId}. Assignments cleared.`
+        );
+      }
+    } else {
+      logger.warn(
+        `[RoomManager] Attempted to set activity state for non-existent room ${classroomId}.`
+      );
+    }
+  }
+
+  // 특정 사용자의 제출물 업데이트
+  updateUserSubmission(classroomId, userId, partNumber, submissionContent) {
+    const room = this.getRoom(classroomId);
+    if (room && room.activityStarted) {
+      // 활동이 시작된 경우에만 제출 가능
+      if (!room.participantSubmissions) {
+        room.participantSubmissions = {};
+      }
+
+      room.participantSubmissions[userId] = {
+        partNumber: partNumber,
+        content: submissionContent,
+      };
+      logger.info(
+        `[RoomManager] Submission updated for user ${userId} (Part ${partNumber}) in room ${classroomId}.`
+      );
+      return true;
+    } else {
+      logger.warn(
+        `[RoomManager] Cannot update submission. Room ${classroomId} not found or activity not started.`
+      );
+      return false;
+    }
+  }
+
+  // 특정 사용자의 제출물을 가져옴
+  getUserSubmission(classroomId, userId) {
+    const room = this.getRoom(classroomId);
+    return room?.participantSubmissions?.[userId] || null;
+  }
+
+  // 해당 방의 모든 제출물을 가져옴
+  getAllSubmissionsForRoom(classroomId) {
+    const room = this.getRoom(classroomId);
+    return room?.participantSubmissions || {};
+  }
+
+  //  participantSubmissions: {
+  //    "userId_Alice": { // 참여자 Alice의 userId
+  //      partNumber: 1, // Alice가 맡은 파트 번호
+  //      content: { /* Blockly JSON 객체 또는 코드 문자열 */ }, // Alice의 제출 내용
+  //  },
+  //  "userId_Bob": { // 참여자 Bob의 userId
+  //   partNumber: 2,
+  //   content: { /* ... */ },
+  //}
+  //
 }
 
 module.exports = RoomManager;
