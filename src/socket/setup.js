@@ -1,281 +1,117 @@
+/**
+ * Socket.IO 설정 및 이벤트 핸들러 등록
+ */
+const socketIO = require("socket.io");
+const jwt = require("jsonwebtoken");
 const logger = require("../utils/logger");
 const events = require("./events");
-const handlers = require("./handlers");
-const SocketStateManager = require("./SocketStateManager");
-const jwt = require("jsonwebtoken");
-
-let stateManagerInstance = null;
-let ioInstance = null;
-
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-if (!SUPABASE_JWT_SECRET) {
-  logger.error("FATAL ERROR: SUPABASE_JWT_SECRET is not defined in .env file.");
-  throw new Error("Supabase JWT Secret is required for socket authentication.");
-}
+const handlers = require("./handlers/index");
+const StateManager = require("./state-manager");
 
 /**
- * Socket.IO 서버 인스턴스를 받아 초기 설정을 수행하는 함수
+ * Socket.IO 서버를 설정하고 이벤트 핸들러를 등록합니다.
+ * @param {Object} server - HTTP 서버 객체
+ * @param {Object} options - 설정 옵션
+ * @returns {Object} Socket.IO 서버 인스턴스
  */
-function initializeSocket(io) {
-  stateManagerInstance = new SocketStateManager();
-  ioInstance = io;
-  logger.info(
-    ">>> [DEBUG Setup] stateManagerInstance assigned:",
-    !!stateManagerInstance
-  );
-  logger.info(">>> [DEBUG Setup] ioInstance assigned:", !!ioInstance);
+function setupSocketIO(server, options = {}) {
+  // Socket.IO 서버 생성
+  const io = socketIO(server, {
+    cors: {
+      origin: process.env.CORS_ORIGIN || "*",
+      methods: ["GET", "POST"],
+      credentials: true,
+    },
+    // 추가 옵션 설정
+    ...options,
+  });
 
-  // Socket.IO 인증 미들웨어 설정
+  // 상태 관리자 인스턴스 생성
+  const stateManager = new StateManager();
+
+  // 인증 미들웨어 설정
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      logger.warn(
-        `[Socket Auth] Connection rejected: Missing token. Socket ID: ${socket.id}`
-      );
-      return next(new Error("Authentication failed: Missing token."));
-    }
-
-    // JWT 토큰 검증
-    jwt.verify(token, SUPABASE_JWT_SECRET, (err, decoded) => {
-      if (err) {
-        logger.warn(`[Socket Auth] Token verification failed: ${err.message}`, {
-          socketId: socket.id,
-        });
-        return next(new Error("Authentication failed: Invalid token."));
+    try {
+      const token = socket.handshake.auth.token;
+      if (!token) {
+        logger.warn(`[Socket] No token provided for socket ${socket.id}`);
+        return next(new Error("Authentication error: Token required"));
       }
-      const decodedData = decoded.user_metadata;
 
-      // 토큰 검증 성공: 디코딩된 정보에서 사용자 ID(sub) 등을 추출하여 소켓 객체에 저장
-      socket.userId = decodedData.sub;
-      socket.userName = decodedData.nickname;
+      // JWT 토큰 검증
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (!decoded || !decoded.userId) {
+        logger.warn(`[Socket] Invalid token for socket ${socket.id}`);
+        return next(new Error("Authentication error: Invalid token"));
+      }
 
-      logger.info(
-        `[Socket Auth] Socket ${socket.id} authenticated. UserID: ${socket.userId}, Username: ${socket.userName}`
-      );
-      next(); // 인증 성공, 연결 진행
+      // 소켓 객체에 사용자 정보 저장
+      socket.userId = decoded.userId;
+      socket.userName = decoded.username || "Anonymous";
+      logger.info(`[Socket] User ${decoded.userId} authenticated for socket ${socket.id}`);
+      next();
+    } catch (error) {
+      logger.error(`[Socket] Authentication error: ${error.message}`);
+      next(new Error("Authentication error"));
+    }
+  });
+
+  // 연결 이벤트 처리
+  io.on("connection", (socket) => {
+    logger.info(`[Socket] New connection: ${socket.id}, User: ${socket.userId}`);
+
+    // 강의실 참여 이벤트
+    socket.on(events.JOIN_CLASSROOM, (data) => {
+      handlers.handleJoinClassroom(socket, data, stateManager, io);
+    });
+
+    // 강의실 퇴장 이벤트
+    socket.on(events.LEAVE_CLASSROOM, (data) => {
+      handlers.handleLeaveClassroom(socket, data, stateManager, io);
+    });
+
+    // 메시지 전송 이벤트
+    socket.on(events.SEND_MESSAGE, (data) => {
+      handlers.handleSendMessage(socket, data, stateManager, io);
+    });
+
+    // 참가자 목록 갱신 이벤트
+    socket.on(events.REFRESH_PARTICIPANT_LIST, (ackCallback) => {
+      handlers.handleRefreshParticipantList(socket, stateManager, ackCallback);
+    });
+
+    // 에디터 내용 변경 이벤트
+    socket.on(events.EDITOR_CONTENT_CHANGE, (data) => {
+      handlers.handleEditorContentChange(socket, data, stateManager, io);
+    });
+
+    // 문제 세트 선택 이벤트
+    socket.on(events.SELECT_PROBLEM_SET, (data) => {
+      handlers.handleSelectProblemSet(socket, data, stateManager, io);
+    });
+
+    // 활동 시작 이벤트
+    socket.on(events.START_ACTIVITY, () => {
+      handlers.handleStartActivity(socket, stateManager, io);
+    });
+
+    // 솔루션 제출 이벤트
+    socket.on(events.SUBMIT_SOLUTION, (data) => {
+      handlers.handleSubmitSolution(socket, data, stateManager, io);
+    });
+
+    // 최종 제출 요청 이벤트
+    socket.on(events.REQUEST_FINAL_SUBMISSION, (data) => {
+      handlers.handleRequestFinalSubmission(socket, data, stateManager, io);
+    });
+
+    // 연결 해제 이벤트
+    socket.on("disconnect", (reason) => {
+      handlers.handleDisconnect(socket, stateManager, io, reason);
     });
   });
 
-  // 'connection' 이벤트 리스너
-  io.on(events.CONNECT, (socket) => {
-    logger.info(
-      `[Socket.IO] User connected: ${socket.id}, UserID: ${socket.userId}`
-    );
-
-    // 'disconnect' 이벤트 리스너
-    socket.on(events.DISCONNECT, (reason) => {
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleDisconnect(
-          socket,
-          stateManagerInstance,
-          ioInstance,
-          reason
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling DISCONNECT."
-        );
-      }
-    });
-
-    // 'error' 이벤트 리스너
-    socket.on(events.ERROR, (error) => {
-      logger.error(
-        `[Socket.IO] Socket error from ${socket.id} (${socket.userId}): ${error.message}`
-      );
-    });
-
-    // 'joinClassroom' 이벤트 리스너
-    socket.on(events.JOIN_CLASSROOM, (data) => {
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleJoinClassroom(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling JOIN_CLASSROOM."
-        );
-      }
-    });
-
-    // 'refreshParticipantList' 이벤트 리스너
-    socket.on(events.REFRESH_PARTICIPANT_LIST, (ackCallback) => {
-      if (stateManagerInstance) {
-        handlers.handleRefreshParticipantList(
-          socket,
-          stateManagerInstance,
-          ackCallback
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling REFRESH_PARTICIPANT_LIST."
-        );
-      }
-    });
-
-    // 'sendMessage' 이벤트 리스너
-    socket.on(events.SEND_MESSAGE, (data) => {
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleSendMessage(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling SEND_MESSAGE."
-        );
-      }
-    });
-
-    // 'leaveClassroom' 이벤트 리스너
-    socket.on(events.LEAVE_CLASSROOM, (data) => {
-      logger.info(
-        `[Socket.IO] Received ${events.LEAVE_CLASSROOM} from ${socket.id} (${socket.userId})`,
-        data
-      );
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleLeaveClassroom(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling LEAVE_CLASSROOM."
-        );
-      }
-    });
-
-    // 'editorContentChange' 이벤트 리스너
-    socket.on(events.EDITOR_CONTENT_CHANGE, (data) => {
-      logger.info(
-        `[Socket.IO] Received ${events.EDITOR_CONTENT_CHANGE} from ${socket.id} (${socket.userId})`
-      );
-
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleEditorContentChange(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling EDITOR_CONTENT_CHANGE."
-        );
-
-        socket.emit(events.ERROR, {
-          message: "Server not ready to handle editor change",
-        });
-      }
-    });
-
-    socket.on(events.SELECT_PROBLEM_SET, (data) => {
-      logger.info(
-        `[Socket.IO] Recevied ${events.SELECT_PROBLEM_SET} from ${socket.id} (${socket.userId})`
-      );
-      // data는 { quest_id: UUID } 형태로 들어옴
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleSelectProblemSet(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] instance not initialized when handling SELECT_PROBLEM_SET."
-        );
-      }
-    });
-
-    socket.on(events.START_ACTIVITY, () => {
-      logger.info(
-        `[Socket.IO] Received ${events.START_ACTIVITY} from ${socket.id} (${socket.userId})`
-      );
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleStartActivity(socket, stateManagerInstance, ioInstance);
-      } else {
-        logger.error(
-          "[Socket.IO] Instance not initialized when handling START_ACTIVITY."
-        );
-        socket.emit(events.ERROR, { message: "Server not ready." });
-      }
-    });
-
-    socket.on(events.SUBMIT_SOLUTION, (data) => {
-      logger.info(
-        `[Socket.IO] Received ${events.SUBMIT_SOLUTION} from ${socket.id} (${socket.userId})`
-      );
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleSubmitSolution(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] Instance not initialized when handling SUBMIT_SOLUTION."
-        );
-        socket.emit(events.ERROR, { message: "Server not ready." });
-      }
-    });
-
-    socket.on(events.REQUEST_FINAL_SUBMISSION, (data) => {
-      logger.info(
-        `[Socket.IO] Received ${events.REQUEST_FINAL_SUBMISSION} from ${socket.id} (${socket.userId})`
-      );
-      if (stateManagerInstance && ioInstance) {
-        handlers.handleRequestFinalSubmission(
-          socket,
-          data,
-          stateManagerInstance,
-          ioInstance
-        );
-      } else {
-        logger.error(
-          "[Socket.IO] Instance not initialized when handling REQUEST_FINAL_SUBMISSION."
-        );
-        socket.emit(events.ERROR, { message: "Server not ready." });
-      }
-    });
-  }); // io.on('connection', ...) 끝
-
-  logger.info(
-    "[Socket.IO] Server initialized and event listeners set up via setup.js."
-  );
+  return io;
 }
 
-// StateManager 인스턴스를 가져오는 함수
-const getStateManager = () => {
-  if (!stateManagerInstance) {
-    logger.error("[StateManager] StateManager instance not available!");
-    return null;
-  }
-  return stateManagerInstance;
-};
-
-// <<<--- Socket.IO 서버 인스턴스를 가져오는 함수 ---<<<
-const getIo = () => {
-  if (!ioInstance) {
-    logger.error(
-      "[Socket.IO] IO instance not available! Was initializeSocket called?"
-    );
-    return null;
-  }
-  return ioInstance;
-};
-
-// <<<--- module.exports 에 getIo 추가 ---<<<
-module.exports = {
-  initializeSocket,
-  getStateManager,
-  getIo, // io 인스턴스를 반환하는 함수 추가
-};
+module.exports = setupSocketIO;
