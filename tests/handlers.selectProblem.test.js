@@ -1,4 +1,4 @@
-const { handleSelectProblemSet } = require("../src/socket/handlers");
+const { handleSelectProblemSet } = require("../src/socket/handlers/activity-handlers");
 const Quest = require("../src/models/Quest");
 const logger = require("../src/utils/logger");
 const events = require("../src/socket/events");
