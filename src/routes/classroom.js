@@ -31,7 +31,7 @@ router.delete(
   ClassroomController.deleteClassroom
 );
 
-// 5. 문제 정보 가져오기 (GET /api/classrooms/:classroom_code/quests)
+// 5. 문제 정보 가져오기 (GET /api/classrooms/:classroom_code/quest)
 router.get(
   "/classrooms/:classroom_code/quest",
   authenticateToken,
