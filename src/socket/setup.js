@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
 const events = require("./events");
-const handlers = require("./handlers");
+const handlers = require("./handlers/index");
 const SocketStateManager = require("./SocketStateManager");
 const jwt = require("jsonwebtoken");
 
@@ -47,7 +47,7 @@ function initializeSocket(io) {
 
       // 토큰 검증 성공: 디코딩된 정보에서 사용자 ID(sub) 등을 추출하여 소켓 객체에 저장
       socket.userId = decodedData.sub;
-      socket.userName = decodedData.nickName;
+      socket.userName = decodedData.nickname;
 
       logger.info(
         `[Socket Auth] Socket ${socket.id} authenticated. UserID: ${socket.userId}, Username: ${socket.userName}`
@@ -173,6 +173,91 @@ function initializeSocket(io) {
         socket.emit(events.ERROR, {
           message: "Server not ready to handle editor change",
         });
+      }
+    });
+
+    socket.on(events.SELECT_PROBLEM_SET, (data) => {
+      logger.info(
+        `[Socket.IO] Recevied ${events.SELECT_PROBLEM_SET} from ${socket.id} (${socket.userId})`
+      );
+      // data는 { quest_id: UUID } 형태로 들어옴
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleSelectProblemSet(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] instance not initialized when handling SELECT_PROBLEM_SET."
+        );
+      }
+    });
+
+    socket.on(events.START_ACTIVITY, () => {
+      logger.info(
+        `[Socket.IO] Received ${events.START_ACTIVITY} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleStartActivity(socket, stateManagerInstance, ioInstance);
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling START_ACTIVITY."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
+
+    socket.on(events.SUBMIT_SOLUTION, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.SUBMIT_SOLUTION} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleSubmitSolution(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling SUBMIT_SOLUTION."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
+
+    socket.on(events.REQUEST_FINAL_SUBMISSION, (data) => {
+      logger.info(
+        `[Socket.IO] Received ${events.REQUEST_FINAL_SUBMISSION} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleRequestFinalSubmission(
+          socket,
+          data,
+          stateManagerInstance,
+          ioInstance
+        );
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling REQUEST_FINAL_SUBMISSION."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
+      }
+    });
+
+    socket.on(events.REQUEST_END_ACTIVITY, () => {
+      logger.info(
+        `[Socket.IO] Received ${events.REQUEST_END_ACTIVITY} from ${socket.id} (${socket.userId})`
+      );
+      if (stateManagerInstance && ioInstance) {
+        handlers.handleEndActivity(socket, stateManagerInstance, ioInstance);
+      } else {
+        logger.error(
+          "[Socket.IO] Instance not initialized when handling REQUEST_END_ACTIVITY."
+        );
+        socket.emit(events.ERROR, { message: "Server not ready." });
       }
     });
   }); // io.on('connection', ...) 끝
