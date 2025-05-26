@@ -24,7 +24,8 @@ const createClassroom = async (req, res) => {
       manager_users_id,
       classroom_name
     );
-
+    console.log("자 날린다");
+    
     res.status(201).json({
       success: true,
       message: "Classroom created successfully.",
@@ -249,6 +250,7 @@ const leaveClassroom = async (req, res) => {
 
     // 2. 코드로 강의실 정보 조회 (DB)
     const classroom = await Classroom.findByCode(classroom_code);
+    logger.info(`[Controller API] Found classroom: ${JSON.stringify(classroom)}`);
     if (!classroom) {
       return res.status(404).json({
         success: false,

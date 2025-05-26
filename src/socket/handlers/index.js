@@ -20,6 +20,7 @@ module.exports = {
   handleSubmitSolution: activityHandlers.handleSubmitSolution,
   handleRequestFinalSubmission: activityHandlers.handleRequestFinalSubmission,
   handleEditorContentChange: activityHandlers.handleEditorContentChange,
+  handleEndActivity: activityHandlers.handleEndActivity,
   
   // 메시지 관련 핸들러
   handleSendMessage: messageHandlers.handleSendMessage,

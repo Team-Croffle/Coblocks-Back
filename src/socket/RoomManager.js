@@ -113,9 +113,10 @@ class RoomManager {
   // 선택된 문제정보 저장
   setSelectedQuest(classroomId, questDetailsFromDB) {
     const room = this.rooms[classroomId];
+    const questDetail = questDetailsFromDB[0];
     if (room) {
-      room.currentQuestId = questDetailsFromDB.quest_id;
-      room.currentQuestDetails = questDetailsFromDB;
+      room.currentQuestId = questDetail.quest_id;
+      room.currentQuestDetails = questDetail;
       logger.info(
         `[RoomManager] Problem ${room.currentQuestId} (raw) stored for room ${classroomId}.`
       );
@@ -190,12 +191,31 @@ class RoomManager {
   //    "userId_Alice": { // 참여자 Alice의 userId
   //      partNumber: 1, // Alice가 맡은 파트 번호
   //      content: { /* Blockly JSON 객체 또는 코드 문자열 */ }, // Alice의 제출 내용
-  //  },
-  //  "userId_Bob": { // 참여자 Bob의 userId
-  //   partNumber: 2,
-  //   content: { /* ... */ },
-  //}
+  //    },
+  //    "userId_Bob": { // 참여자 Bob의 userId
+  //     partNumber: 2,
+  //     content: { /* ... */ },
+  //  }
   //
+  
+  endCurrentActivity(classroomId) {
+    const room = this.getRoom(classroomId);
+    if (room && room.activityStarted) {
+      room.activityStarted = false;
+      room.participantAssignments = [];
+      room.participantSubmissions = {};
+      room.currentQuestId = null;
+      room.currentQuestDetails = null;
+      logger.info(`[RoomManager] Activity ended for room ${classroomId}. All state cleared.`);
+      return true;
+    }
+    if (room && !room.activityStarted) {
+      logger.warn(`[RoomManager] Activity was not started`);
+      return false;
+    }
+    logger.warn(`[RoomManager] Attempted to end activity for non-existent room ${classroomId}.`);
+    return false;
+  }
 }
 
 module.exports = RoomManager;

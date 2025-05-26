@@ -96,12 +96,12 @@ async function handleStartActivity(socket, stateManager, io) {
     return;
   }
 
-  // 이미 활동이 시작되었는지 확인
-  if (room.activityStarted) {
-    logger.warn(`[Handler StartActivity] Activity already started in room ${roomId}. Request by ${userId}(${socketId}, ${username}).`);
-    socket.emit(events.ERROR, { message: "Activity has already started." });
-    return;
-  }
+  // // 이미 활동이 시작되었는지 확인
+  // if (room.activityStarted) {
+  //   logger.warn(`[Handler StartActivity] Activity already started in room ${roomId}. Request by ${userId}(${socketId}, ${username}).`);
+  //   socket.emit(events.ERROR, { message: "Activity has already started." });
+  //   return;
+  // }
 
   // 문제가 선택되었는지 확인
   if (!room.currentQuestId || !room.currentQuestDetails) {
@@ -140,13 +140,13 @@ async function handleStartActivity(socket, stateManager, io) {
     let finalQuestContentForUser;
     let finalQuestQuestionForUser;
 
+    const playerKey = `player${assignedPartNumber}`;
     if (questDetails.quest_context.is_equal == true) {
       // 공통 문제
       finalQuestContentForUser = questDetails.quest_context.player1 || questDetails.quest_context.common;
       finalQuestQuestionForUser = questDetails.quest_question;
     } else {
       // 개인 문제
-      const playerKey = `player${assignedPartNumber}`;
       finalQuestContentForUser = questDetails.quest_context[playerKey];
       finalQuestQuestionForUser = questDetails.quest_question[playerKey];
     }
@@ -340,10 +340,49 @@ async function handleEditorContentChange(socket, data, stateManager, io) {
   }
 }
 
+async function handleEndActivity(socket, stateManager, io) {
+  const socketId = socket.id;
+  const userId = socket.userId;
+  const username = socket.userName;
+
+  // 사용자가 현재 유효한 방에 있는지 확인
+  const roomId = stateManager.getRoomIdBySocketId(socketId);
+  if (!roomId) {
+    logger.warn(`[Handler EndActivity] User ${userId}(${socketId}, ${username}) not in a room.`);
+    socket.emit(events.ERROR, { message: "You are not currently in a classroom." });
+    return;
+  }
+
+  const roomManager = stateManager.roomManager;
+  const room = roomManager.getRoom(roomId);
+
+  if (!room) {
+    logger.warn(`[Handler EndActivity] Room ${roomId} not found for user ${userId}(${socketId}, ${username}).`);
+    socket.emit(events.ERROR, { message: "Classroom session not found." });
+    return;
+  }
+
+  // 개설자 권한 확인
+  if (room.managerSocketId !== socketId) {
+    logger.warn(`[Handler EndActivity] User ${userId}(${socketId}, ${username}) is not the manager of room ${roomId}.`);
+    socket.emit(events.ERROR, { message: "Only the manager can end the activity." });
+    return;
+  }
+
+  // 활동 종료 상태 업데이트
+  roomManager.endCurrentActivity(roomId);
+
+  // 모든 참여자에게 활동 종료 이벤트 브로드캐스트
+  io.to(roomId).emit(events.ACTIVITY_ENDED, {
+    message: `Activity has been ended by the manager ${username}.`,
+  });
+}
+
 module.exports = {
   handleSelectProblemSet,
   handleStartActivity,
   handleSubmitSolution,
   handleRequestFinalSubmission,
-  handleEditorContentChange
+  handleEditorContentChange,
+  handleEndActivity,
 };

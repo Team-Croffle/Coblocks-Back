@@ -10,25 +10,17 @@ class Quest {
     );
     try {
       // 함수로 대체 예정?
-      const { data, error } = await supabase
-        .from("quest") // 실제 테이블 이름이 'quest'인지 확인 필요
-        .select(
-          "quest_id, chapter_id, quest_description, quest_difficulty, quest_type, solve_status" // 추후 변경사항에 따라 변경
-        ); // 필요한 컬럼만 선택
-
+      const { data, error } = await supabase.rpc("get_questlist");
       if (error) {
         logger.error(
-          "[Model Quest] Supabase error fetching quest summaries:",
-          error
+          `[Model Quest] Supabase error fetching all quest summaries: ${error.message}`
         );
-        throw error;
+        throw error; // 에러를 컨트롤러에서 처리할 수 있도록 던짐
       }
-
-      logger.info(
-        `[Model Quest] Successfully fetched ${
-          data ? data.length : 0
-        } quest summaries.`
-      );
+      if (!data || (Array.isArray(data) && data.length === 0)) {
+        logger.warn("[Model Quest] No quest summaries found or empty data.");
+        return []; // 빈 배열 반환
+      }
       return data; // 예: [{ quest_id, chapter_id, ... }, ...]
     } catch (error) {
       logger.error(
