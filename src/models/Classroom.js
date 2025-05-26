@@ -4,7 +4,6 @@ const logger = require("../utils/logger"); // 실제 경로에 맞게 수정해�
 
 class Classroom {
   static async create(manager_users_id, classroom_name) {
-    const classroom_id = uuidv4();
     let classroom_code = null;
     const MAX_RETRIES = 10; // 무한 루프 방지를 위한 최대 재시도 횟수
     let retries = 0;
@@ -32,7 +31,6 @@ class Classroom {
 
     try {
       const { data, error } = await supabase.rpc("handle_create_classroom", {
-        p_classroom_id: classroom_id,
         p_classroom_code: classroom_code,
         p_manager_users_id: manager_users_id,
         p_classroom_name: classroom_name,

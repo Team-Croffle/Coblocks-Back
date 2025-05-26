@@ -7,7 +7,7 @@ const bodyParser = require("body-parser"); // 요청 본문(body) 파싱 미들�
 const path = require("path"); // 파일 및 디렉토리 경로 작업을 위한 모듈
 const { Server } = require("socket.io"); // Socket.IO 서버 생성 위해 필요
 
-const { initializeSocket } = require("./src/socket/setup"); // setup.js에서 함수 가져오기
+const {initializeSocket} = require("./src/socket/setup"); // setup.js에서 함수 가져오기
 const logger = require("./src/utils/logger"); // 로거 사용 (이전에 없었다면 추가)
 
 const classroomRouter = require("./src/routes/classroom");

@@ -1,4 +1,5 @@
 const Classroom = require("../models/Classroom");
+const Quest = require("../models/Quest");
 const { getStateManager, getIo } = require("../socket/setup");
 const logger = require("../utils/logger");
 const events = require("../socket/events");
@@ -23,7 +24,8 @@ const createClassroom = async (req, res) => {
       manager_users_id,
       classroom_name
     );
-
+    console.log("자 날린다");
+    
     res.status(201).json({
       success: true,
       message: "Classroom created successfully.",
@@ -248,6 +250,7 @@ const leaveClassroom = async (req, res) => {
 
     // 2. 코드로 강의실 정보 조회 (DB)
     const classroom = await Classroom.findByCode(classroom_code);
+    logger.info(`[Controller API] Found classroom: ${JSON.stringify(classroom)}`);
     if (!classroom) {
       return res.status(404).json({
         success: false,
@@ -394,9 +397,45 @@ const leaveClassroom = async (req, res) => {
   }
 };
 
+const getQuestList = async (req, res) => {
+  logger.info(
+    `[ClassroomController] User requested quest information (problem list).`
+  );
+
+  try {
+    const questSummary = await Quest.getAllQuestSummaries(); // 모든 퀘스트 요약 정보 가져오기
+
+    if (!questSummary) {
+      logger.warn(
+        "[ClassroomController] No quests found or Quest.getAllQuests returned null/undefined."
+      );
+      return res.status(404).json({
+        success: false,
+        message: "No quest information found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Quest information retrieved successfully.",
+      questSummary: questSummary,
+    });
+  } catch (error) {
+    logger.error(
+      `[ClassroomController] Error retrieving quest information for user : ${error.message}`,
+      error
+    );
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve quest information due to a server error.",
+    });
+  }
+};
+
 module.exports = {
   createClassroom,
   joinClassroomByCode,
   deleteClassroom,
   leaveClassroom,
+  getQuestList,
 };
