@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket.IO Tester</title>
+</head>
+<body>
+    <h1>NestJS Socket Server Test</h1>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        // NestJS 서버의 기본 주소인 3000번 포트로 접속합니다.
+        const socket = io("http://localhost:3000");
+
+        socket.on("connect", () => {
+            console.log("서버에 성공적으로 연결되었습니다. ID:", socket.id);
+        });
+
+        socket.on("disconnect", () => {
+            console.log("서버와 연결이 끊어졌습니다.");
+        });
+    </script>
+</body>
+</html>
