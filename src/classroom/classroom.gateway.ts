@@ -35,7 +35,23 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       client.join(code); // 방에 참가
       client.emit('roomCreated', newRoom); // 방 생성 성공 응답
     } catch (error) {
-      client.emit('error', { message: error.message }); // 에러 발생 시 클라이언트에 에러 메시지 전송
+      client.emit('error', { success: false, message: error.message }); // 에러 발생 시 클라이언트에 에러 메시지 전송
+    }
+  }
+
+  @SubscribeMessage('joinRoom')
+  handleJoinRoom(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
+    const { code, userId, username } = data; // 클라이언트로부터 받은 데이터
+    try {
+      const room = this.classroomService.joinRoom(code, userId); // 방 참가
+      if(room){
+        client.join(code); // 방에 참가
+      }
+      client.emit('joinedRoom', { message: '방에 입장했습니다!', room }); // 방 참가 성공 응답(본인)
+
+      client.to(code).emit('userJoined', {room, message: `${username}님이 방에 입장했습니다` }); // 방에 참가한 사용자에게 알림
+    } catch (error) {
+      client.emit('error', { success: false, message: error.message }); // 에러 발생 시 클라이언트에 에러 메시지 전송
     }
   }
 }
