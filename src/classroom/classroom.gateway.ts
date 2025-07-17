@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import { OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { ClassroomService } from './classroom.service';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
+import { JoinClassroomDto } from './dto/join-classroom.dto';
 
 @WebSocketGateway({
   cors: {
@@ -41,8 +42,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage('joinRoom')
-  handleJoinRoom(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
-    const { code, userId, username } = data; // 클라이언트로부터 받은 데이터
+  handleJoinRoom(@MessageBody() classroom: JoinClassroomDto, @ConnectedSocket() client: Socket) {
+    const { code, userId, username } = classroom; // 클라이언트로부터 받은 데이터
     try {
       const room = this.classroomService.joinRoom(code, userId); // 방 참가
       if(room){
