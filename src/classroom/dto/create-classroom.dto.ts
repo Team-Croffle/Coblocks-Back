@@ -5,6 +5,9 @@ export class CreateClassroomDto {
     id: string;
 
     @IsString()
+    name: string;
+
+    @IsString()
     code: string;
 
     @IsUUID()

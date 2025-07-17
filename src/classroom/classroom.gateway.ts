@@ -30,12 +30,21 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
   @SubscribeMessage('createRoom')
   handleCreateRoom(@MessageBody() classroom: CreateClassroomDto, @ConnectedSocket() client: Socket) {
-    const { id, code, managerId } = classroom; // 클라이언트로부터 받은 데이터
+    const { id, name, code, managerId } = classroom; // 클라이언트로부터 받은 데이터
     const managerSocketId = client.id; // 개설자 소켓 ID
+
     try {
-      const newRoom = this.classroomService.createRoom(id, code, managerId, managerSocketId);
+      const newRoom = this.classroomService.createRoom(id, name, code, managerId, managerSocketId);
+
       client.join(code); // 방에 참가
-      return { success: true, message: '방이 성공적으로 개설되었습니다!'}; // 방 개설 성공 응답
+
+      return { 
+        success: true,
+        message: '방이 성공적으로 개설되었습니다!',
+        roomParticipants: newRoom.participants, // 참가자 목록
+        roomIsManager: true, // 개설자는 항상 매니저
+        roomState: newRoom.state, // 방 상태
+      }; // 방 개설 성공 응답
     } catch (error) {
       return { success: false, message: error.message }; // 에러 발생 시 클라이언트에 에러 메시지 전송
     }
@@ -44,13 +53,25 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('joinRoom')
   handleJoinRoom(@MessageBody() classroom: JoinClassroomDto, @ConnectedSocket() client: Socket) {
     const { code, userId, username } = classroom; // 클라이언트로부터 받은 데이터
+
     try {
       const room = this.classroomService.joinRoom(code, userId); // 방 참가
+
       if(room){
         client.join(code); // 방에 참가
       }
-      client.to(code).emit('userJoined', { message: `${username}님이 방에 입장했습니다` }); // 방에 참가한 사용자에게 알림
-      return { success: true, message: '방에 입장했습니다!' }
+
+      client.to(code).emit('userJoined', { message: `${username}님이 방에 입장했습니다` }, room.participants, room.state); // 방에 참가한 사용자에게 알림
+      
+      return { 
+        success: true,
+        message: '방에 입장했습니다!',
+        roomName: room.name,
+        roomCode: room.code,
+        roomParticipants: room.participants,
+        roomIsManager: room.managerId === userId,
+        roomState: room.state
+      }; // 방 참가 성공 응답
     } catch (error) {
       return { success: false, message: error.message }; // 에러 발생 시 클라이언트에 에러 메시지 전송
     }

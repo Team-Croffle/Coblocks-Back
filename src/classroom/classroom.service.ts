@@ -6,12 +6,13 @@ export class ClassroomService {
     private rooms = new Map<string, Classroom>();
 
     // 방 생성
-    createRoom(id: string, code: string, managerId: string, managerSocketId: string): Classroom | void {
+    createRoom(id: string, name: string, code: string, managerId: string, managerSocketId: string): Classroom{
         if (this.rooms.has(code)){
             throw new Error('Room already exists with this code');
         }
         const newRoom: Classroom = {
             id,
+            name,
             code,
             managerId,
             managerSocketId, 
