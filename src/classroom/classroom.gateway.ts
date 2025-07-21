@@ -2,10 +2,11 @@ import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSo
 import { Server, Socket } from 'socket.io';
 import { OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { ClassroomService } from './classroom.service';
-import { CreateClassroomDto } from './dto/create-classroom.dto';
-import { JoinClassroomDto } from './dto/join-classroom.dto';
+import { CreateClassroomDto } from './classroomDto/create-classroom.dto';
+import { JoinClassroomDto } from './classroomDto/join-classroom.dto';
 import { UseFilters } from '@nestjs/common';
 import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
+import { WsException } from '@nestjs/websockets';
 
 @WebSocketGateway({
   cors: {
@@ -38,7 +39,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       const newRoom = this.classroomService.createRoom(classroom.id, classroom.name, classroom.code, classroom.managerId, managerSocketId);
 
       if (!newRoom) {
-        throw new Error('방 개설에 실패했습니다. 이미 존재하는 방 코드입니다.'); // 방 개설 실패 시 에러 발생
+        throw new WsException('방 개설에 실패했습니다. 이미 존재하는 방 코드입니다.'); // 방 개설 실패 시 에러 발생
       }
 
       client.join(classroom.code); // 방에 참가
