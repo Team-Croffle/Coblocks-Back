@@ -13,8 +13,33 @@ export class ActivityGateway {
   @WebSocketServer()
   server: Socket;
 
-  @SubscribeMessage('message')
-  handleMessage(@MessageBody() payload: any): string {
-    return 'Hello world!';
+  @SubscribeMessage('activity:editor-change')
+  handleEditorChange(@MessageBody() payload: any): string {
+    return 'editorContentChange';
+  }
+
+  @SubscribeMessage('activity:problem-set-select')
+  handleProblemSetSelect(@MessageBody() payload: any): string {
+    return 'selectProblemSet';
+  }
+
+  @SubscribeMessage('activity:start')
+  handleStart(@MessageBody() payload: any): string {
+    return 'startActivity';
+  }
+
+  @SubscribeMessage('activity:solution-submit')
+  handleSolutionSubmit(@MessageBody() payload: any): string {
+    return 'submitSolution';
+  }
+
+  @SubscribeMessage('activity:final-submit')
+  handleFinalSubmit(@MessageBody() payload: any): string {
+    return 'requestFinalSubmission';
+  }
+
+  @SubscribeMessage('activity:end')
+  handleEnd(@MessageBody() payload: any): string {
+    return 'requestEndActivity';
   }
 }
