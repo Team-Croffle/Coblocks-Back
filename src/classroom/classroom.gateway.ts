@@ -24,26 +24,26 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // 클라이언트의 연결이 끊어질 때 호출되는 메서드
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
+    
   }
 
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
   @SubscribeMessage('createRoom')
   handleCreateRoom(@MessageBody() classroom: CreateClassroomDto, @ConnectedSocket() client: Socket) {
-    const { id, name, code, managerId } = classroom; // 클라이언트로부터 받은 데이터
+    const { id, name, code, managerId, managername } = classroom; // 클라이언트로부터 받은 데이터
     const managerSocketId = client.id; // 개설자 소켓 ID
 
     try {
       const newRoom = this.classroomService.createRoom(id, name, code, managerId, managerSocketId);
 
       client.join(code); // 방에 참가
-
+      newRoom.participants.push({ userId: managerId, username: managername }); // 개설자는 참가자 목록에 추가
       return { 
         success: true,
         message: '방이 성공적으로 개설되었습니다!',
-        roomParticipants: newRoom.participants, // 참가자 목록
-        roomIsManager: true, // 개설자는 항상 매니저
-        roomState: newRoom.state, // 방 상태
+        participants: newRoom.participants, // 참가자 목록
+        isManager: true, // 개설자는 항상 매니저
+        state: newRoom.state, // 방 상태
       }; // 방 개설 성공 응답
     } catch (error) {
       return { success: false, message: error.message }; // 에러 발생 시 클라이언트에 에러 메시지 전송
@@ -51,11 +51,11 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage('joinRoom')
-  handleJoinRoom(@MessageBody() classroom: JoinClassroomDto, @ConnectedSocket() client: Socket) {
-    const { code, userId, username } = classroom; // 클라이언트로부터 받은 데이터
+  handleJoinRoom(@MessageBody() joinInfo: JoinClassroomDto, @ConnectedSocket() client: Socket) {
+    const { code, userId, username } = joinInfo; // 클라이언트로부터 받은 데이터
 
     try {
-      const room = this.classroomService.joinRoom(code, userId); // 방 참가
+      const room = this.classroomService.joinRoom(code, userId, username); // 방 참가
 
       if(room){
         client.join(code); // 방에 참가
@@ -77,4 +77,24 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
   }
 
+  @SubscribeMessage('leaveRoom')
+  handleLeaveRoom(@MessageBody() data: {code: string, userId: string}, @ConnectedSocket() client: Socket) {
+    console.log("나가기 요청 받음");
+    // 방 찾기
+      try {
+        // Service에서 방 나가기 처리
+        const result = this.classroomService.leaveRoom(data.code, data.userId);
+          // 다른 참가자들에게 알림
+        client.to(data.code).emit('userLeft', { 
+           message: `${data.userId} 님이 방을 나갔습니다`
+        }, result.participants, result.state);
+        // 클라이언트에게 방 나가기 성공 응답
+        return {
+          success: true,
+          message: '방을 성공적으로 나갔습니다!',
+        }
+      } catch (error) {
+        return {success: false, message: error.message }; // 에러 발생 시 클라이언트에 에러 메시지 전송
+      }
+  }
 }

@@ -12,4 +12,7 @@ export class CreateClassroomDto {
 
     @IsUUID()
     managerId: string;
+
+    @IsString()
+    managername: string;
 }

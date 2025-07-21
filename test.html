@@ -7,16 +7,162 @@
     <h1>NestJS Socket Server Test</h1>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        // NestJS 서버의 기본 주소인 3000번 포트로 접속합니다.
-        const socket = io("http://localhost:3000");
+        // 🔥 실제 시나리오: 평상시엔 소켓 연결 안함, 강의실 생성/입장시에만 연결
+        let socket = null; // 초기엔 연결 안됨
+        let isConnected = false;
 
-        socket.on("connect", () => {
-            console.log("서버에 성공적으로 연결되었습니다. ID:", socket.id);
-        });
+        //강의실 생성 DTO
+        const classroomDetails = {
+            id: "519a2fbd-b1cd-494b-842b-3f2d1f19cf22",
+            name: "testRoom1",
+            code: "ABCD1234",
+            managerId: "4d3fb42a-1507-4f6a-86d8-899732e4fbc5", //UUID
+            managername: "testManager",
+        };
+        
+        // 강의실 접속 DTO
+        const joinRoomInfo = {
+            code: classroomDetails.code,
+            userId: "4d3fb42a-1507-4f6a-86d8-899732e4fbc6", //UUID
+            username: "joinUser",
+        }
 
-        socket.on("disconnect", () => {
-            console.log("서버와 연결이 끊어졌습니다.");
-        });
+        // 📡 소켓 연결 함수 (강의실 진입시에만 호출)
+        function connectSocket() {
+            if (!socket || !isConnected) {
+                console.log("🔌 소켓 연결 시작...");
+                socket = io("http://localhost:3000");
+                
+                socket.on('connect', () => {
+                    isConnected = true;
+                    console.log("✅ 소켓 연결 성공:", socket.id);
+                    document.getElementById("connectionStatus").innerText = `연결 상태: 연결됨 (${socket.id})`;
+                });
+
+                socket.on('disconnect', () => {
+                    isConnected = false;
+                    console.log("❌ 소켓 연결 해제");
+                    document.getElementById("connectionStatus").innerText = "연결 상태: 연결 해제됨";
+                });
+
+                // 📨 실시간 이벤트 수신 (다른 사용자 입장 알림)
+                socket.on('userJoined', (data, participants, state) => {
+                    console.log("👥 새 사용자 입장:", data, participants, state);
+                    document.getElementById("resultChat").innerHTML += 
+                        `<div>🔔 ${data.message} (참가자 수: ${participants?.length || 0})</div>`;
+                });
+
+                // 📨 채팅 메시지 수신
+                socket.on('newMessage', (data) => {
+                    console.log("💬 새 메시지:", data);
+                    document.getElementById("resultChat").innerHTML += 
+                        `<div>💬 ${data.username}: ${data.message}</div>`;
+                });
+            }
+        }
+
+        // 🏫 강의실 생성 (소켓 연결 + 방 생성)
+        function createClassroom() {
+            connectSocket(); // 소켓 연결
+            
+            setTimeout(() => { // 연결 완료 대기
+                if (isConnected) {
+                    socket.emit("createRoom", classroomDetails, (response) => {
+                        console.log("🏫 강의실 생성 응답:", response);
+                        document.getElementById("resultJoinClassroom").innerHTML = 
+                            `<strong>강의실 생성 결과:</strong> ${response.message}<br>
+                             참가자 수: ${response.participants?.length || 0}<br>
+                             매니저 여부: ${response.isManager ? '예' : '아니오'}<br>
+                             방 상태: ${response.state || 'unknown'}`;
+                    });
+                } else {
+                    console.log("❌ 소켓 연결 대기 중...");
+                }
+            }, 1000);
+        }
+
+        // 🚪 강의실 입장 (소켓 연결 + 방 입장)
+        function enterClassroom() {
+            connectSocket(); // 소켓 연결
+            
+            setTimeout(() => { // 연결 완료 대기
+                if (isConnected) {
+                    socket.emit("joinRoom", joinRoomInfo, (response) => {
+                        console.log("🚪 강의실 입장 응답:", response);
+                        document.getElementById("resultClassroom").innerHTML = 
+                            `<strong>강의실 입장 결과:</strong> ${response.message}<br>
+                             방 이름: ${response.roomName || 'N/A'}<br>
+                             방 코드: ${response.roomCode || 'N/A'}<br>
+                             참가자 수: ${response.roomParticipants?.length || 0}<br>
+                             매니저 여부: ${response.roomIsManager ? '예' : '아니오'}<br>
+                             방 상태: ${response.roomState || 'unknown'}`;
+                    });
+                } else {
+                    console.log("❌ 소켓 연결 대기 중...");
+                }
+            }, 1000);
+        }
+
+        // 💬 채팅 전송 테스트
+        function sendChat() {
+            if (isConnected && socket) {
+                const chatData = {
+                    code: classroomDetails.code,
+                    userId: joinRoomInfo.userId,
+                    username: joinRoomInfo.username,
+                    message: `테스트 메시지 ${new Date().getTime()}`
+                };
+                
+                socket.emit("sendMessage", chatData, (response) => {
+                    console.log("💬 채팅 전송 응답:", response);
+                    if (response.success) {
+                        document.getElementById("resultChat").innerHTML += 
+                            `<div>✅ 내 메시지: ${chatData.message}</div>`;
+                    }
+                });
+            } else {
+                alert("먼저 강의실에 입장하세요!");
+            }
+        }
+
+        // 🚪 강의실 나가기 (소켓 연결 해제)
+        function leaveClassroom() {
+            if (socket && isConnected) {
+                console.log("🚪 강의실 나가기...");
+                socket.emit('leaveRoom', {code: classroomDetails.code, userId: joinRoomInfo.userId }, (response) => {
+                    console.log("🚪 강의실 나가기 응답:", response);
+                    document.getElementById("resultClassroom").innerHTML = 
+                        `<strong>강의실 나가기 결과:</strong> ${response.message}`;
+                    
+                    // 서버 응답을 받은 후에 소켓 연결 해제
+                    socket.disconnect();
+                    socket = null;
+                    isConnected = false;
+                    document.getElementById("connectionStatus").innerText = "연결 상태: 연결 해제됨";
+                });
+            } else {
+                alert("현재 강의실에 입장하지 않았습니다.");
+            }
+        }
+
     </script>
+
+    <p> Socket.IO 클라이언트 테스트 </p>
+    <p id="connectionStatus">연결 상태: 연결 안됨 (평상시 상태)</p>
+    <br>
+    <p id="resultJoinClassroom">강의실 생성 결과가 나올 공간</p>
+    <p id="resultClassroom">강의실 입장 결과가 나올 공간</p>
+    <div id="resultChat" style="border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; background: #f9f9f9;">
+        <div>💬 채팅창 (실시간 메시지가 여기 표시됩니다)</div>
+    </div>
+    <br>
+    <button id="getClassroomInfo" onclick="getClassroomInfo()">강의실 정보 확인하기</button>
+    <button id="createClassroom" onclick="createClassroom()">🏫 강의실 생성 (소켓 연결)</button>
+    <br><br>
+    <button id="enterClassroom" onclick="enterClassroom()">🚪 강의실 입장 (소켓 연결)</button>
+    <br><br>
+    <button id="sendChat" onclick="sendChat()">💬 채팅 전송</button>
+    <br><br>
+    <button id="leaveClassroom" onclick="leaveClassroom()">🚪 강의실 나가기 (소켓 해제)</button>
 </body>
 </html>
