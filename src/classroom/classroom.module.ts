@@ -3,6 +3,7 @@ import { ClassroomGateway } from './classroom.gateway';
 import { ClassroomService } from './classroom.service';
 
 @Module({
-  providers: [ClassroomGateway, ClassroomService]
+  providers: [ClassroomGateway, ClassroomService],
+  exports: [ClassroomService],
 })
 export class ClassroomModule {}

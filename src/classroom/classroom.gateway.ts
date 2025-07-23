@@ -23,73 +23,128 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   
   // 클라이언트가 접속할 때 호출되는 메서드
   handleConnection(client: Socket){
-    console.log(`Client connected: ${client.id}`);
+    console.log(`Client connected: ${client.id}`); // 테스트를 위한 로그 출력
   }
 
   // 클라이언트의 연결이 끊어질 때 호출되는 메서드
   handleDisconnect(client: Socket) {
     console.log(`Client disconnected: ${client.id}`);
+
+    // ClassroomService를 통해 연결 끊김 처리
+    const result = this.classroomService.removeUserOnDisconnect(client.id, this.server);
+
+    if (result) {
+      const { room, leftUser, wasManager, roomTerminated } = result;
+
+      // 방이 즉시 종료된 경우, 추가 이벤트 불필요
+      if (roomTerminated) {
+        console.log(`[Gateway] Room ${room.id} has been terminated due to manager disconnection.`);
+        return;
+      }
+
+      // 방이 유지되는 경우
+      const remainingParticipants = Array.from(room.participants.values());
+
+      this.server.to(room.code).emit('userLeft', {
+        leftUser: leftUser.username,
+        users: remainingParticipants.map(p => ({ username: p.username })),
+        userCount: remainingParticipants.length,
+        isManagerLeftTemporarily: wasManager,
+      });
+    }
   }
 
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
   @SubscribeMessage('createRoom')
-  handleCreateRoom(@MessageBody() classroom: CreateClassroomDto, @ConnectedSocket() client: Socket) {
-    const managerSocketId = client.id; // 개설자 소켓 ID
+  handleCreateRoom(@MessageBody() data: CreateClassroomDto, @ConnectedSocket() client: Socket) {
+    console.log(`[Gateway] Create room request from user ${data.managername} with code ${data.code}.`);
+    
+      const newRoom = this.classroomService.createRoom(
+        data.id,
+        data.name,
+        data.code,
+        data.managerId,
+        client.id,
+        data.managername
+      ); // 방 생성
 
-      const newRoom = this.classroomService.createRoom(classroom.id, classroom.name, classroom.code, classroom.managerId, managerSocketId);
+      client.join(newRoom.code); // 방에 참가
 
-      if (!newRoom) {
-        throw new WsException('방 개설에 실패했습니다. 이미 존재하는 방 코드입니다.'); // 방 개설 실패 시 에러 발생
-      }
-
-      client.join(classroom.code); // 방에 참가
-      newRoom.participants.push({ userId: classroom.managerId, username: classroom.managername }); // 개설자는 참가자 목록에 추가
       return {
         success: true,
         message: '방이 성공적으로 개설되었습니다!',
-        participants: newRoom.participants, // 참가자 목록
-        isManager: true, // 개설자는 항상 매니저
+        users: Array.from(newRoom.participants.values()).map(p => ({ username: p.username })), // 참가자 목록
+        isManager: true, // 개설자 권한 여부
         state: newRoom.state, // 방 상태
       }; // 방 개설 성공 응답
   }
 
   @SubscribeMessage('joinRoom')
-  handleJoinRoom(@MessageBody() joinInfo: JoinClassroomDto, @ConnectedSocket() client: Socket) {
+  handleJoinRoom(@MessageBody() data: JoinClassroomDto, @ConnectedSocket() client: Socket) {
 
-      const room = this.classroomService.joinRoom(joinInfo.code, joinInfo.userId, joinInfo.username); // 방 참가
+      const room = this.classroomService.joinRoom(
+        data.code,
+        data.userId,
+        data.username,
+        client.id,
+        this.server // 이전 소켓 강제 종료를 위해 서버 인스턴스를 전달(중복 방 참가 방지)
+      ); // 방 참가
 
-      if(room){
-        client.join(joinInfo.code); // 방에 참가
-      }
+      client.join(room.code); // 방에 참가
 
-      client.to(joinInfo.code).emit('userJoined', { message: `${joinInfo.username}님이 방에 입장했습니다` }, room.participants, room.state); // 방에 참가한 사용자에게 알림
+      const participants = Array.from(room.participants.values());
+
+      client.to(room.code).emit('userJoined', {
+        joinUser: data.username,
+        users: participants.map(p => ({ username: p.username })),
+        userCount: participants.length,
+      })
 
       return {
         success: true,
         message: '방에 입장했습니다!',
-        roomName: room.name,
-        roomCode: room.code,
-        roomParticipants: room.participants,
-        roomIsManager: room.managerId === joinInfo.userId,
-        roomState: room.state
+        classroom: { name: room.name, code: room.code },
+        users: participants.map(p => ({ username: p.username })),
+        isManager: room.managerId === data.userId,
+        roomState: room.state,
+        // 재접속 시 현재 방 상태를 알려줌 (추후 추가 예정)
+        // currentSelectedQuest: room.currentSelectedQuestDetails,
+        // activityStarted: room.activityStarted,
+        // participantsAssignments: room.participantsAssignments,
+        isGracePeriod: this.classroomService.isGracePeriodActive(room.id),
       }; // 방 참가 성공 응답
     
   }
 
+  // 방 나가기 요청 처리(명시적 퇴장 요청)
   @SubscribeMessage('leaveRoom')
   handleLeaveRoom(@MessageBody() data: {code: string, userId: string}, @ConnectedSocket() client: Socket) {
-    console.log("나가기 요청 받음");
-    // 방 찾기
-        // Service에서 방 나가기 처리
-        const result = this.classroomService.leaveRoom(data.code, data.userId);
-          // 다른 참가자들에게 알림
-        client.to(data.code).emit('userLeft', { 
-           message: `${data.userId} 님이 방을 나갔습니다`
-        }, result.participants, result.state);
-        // 클라이언트에게 방 나가기 성공 응답
-        return {
-          success: true,
-          message: '방을 성공적으로 나갔습니다!',
-        }
+    console.log(`[Gateway] leaveRoom request from ${data.userId} for room ${data.code}`);
+    
+    const result = this.classroomService.leaveRoom(data.code, data.userId, client.id, this.server);
+
+    if (result.success) {
+      // 방이 종료된 경우 추가 이벤트 불필요 (leaveRoom 내부의 terminateRoomImmediately 호출로 처리됨)
+      console.log(`[Gateway] Room ${data.code} terminated by explicit leave of user ${data.userId}.`);
+    } else {
+      // 일반 참가자 퇴장
+      const remainingParticipants = result.participants;
+      if (!remainingParticipants) {
+        console.error(`[Gateway] No remaining participants found after leaving room ${data.code}.`);
+        return { success: false, message: '방에 참가자가 없습니다.' };
+      }
+
+      client.to(data.code).emit('userLeft', {
+        leftUser: client.data.username,
+        users: remainingParticipants.map(p => ({ username: p.username })),
+        userCount: remainingParticipants.length,
+        isManagerLeftTemporarily: false,
+    });
+  }
+    
+    return {
+      success: true,
+      message: '방을 성공적으로 나갔습니다!',
+    };
   }
 }
