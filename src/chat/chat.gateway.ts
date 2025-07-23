@@ -21,15 +21,19 @@ export class ChatGateway {
 
   @SubscribeMessage('sendMessage')
   handleMessage(@MessageBody() messageData: SendMessageDto, @ConnectedSocket() client: Socket) {
+    // 
+    const room = this.classroomService.findRoomByCode(messageData.roomCode);
+    if (!room) {
+      throw new WsException('존재하지 않는 방입니다.');
+    }
+    if (!room.participants.has(client.id)) {
+      throw new WsException('방에 참가하지 않은 사용자입니다.');
+    }
+
     const message = {
       username: messageData.username,
       message: messageData.message,
       timestamp: new Date().toISOString(),
-    }
-
-    const room = this.classroomService.findRoomByCode(messageData.roomCode);
-    if (!room) {
-      throw new WsException('존재하지 않는 방입니다.');
     }
 
     this.server.to(messageData.roomCode).emit('message', message);

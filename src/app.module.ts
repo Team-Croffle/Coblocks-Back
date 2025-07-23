@@ -9,6 +9,6 @@ import { ActivityModule } from './activity/activity.module';
 @Module({
   imports: [ClassroomModule, ChatModule, ActivityModule],
   controllers: [AppController],
-  providers: [AppService, ChatGateway],
+  providers: [AppService],
 })
 export class AppModule {}

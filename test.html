@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <title>Simple Classroom Tester</title>
+    <title>Simple Classroom & Chat Tester</title>
     <meta charset="UTF-8">
     <style>
-        body { font-family: sans-serif; display: flex; gap: 20px; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; gap: 20px; padding: 20px; }
         .panel { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background-color: #fff; }
-        h2 { margin-top: 0; }
+        h2 { margin-top: 0; font-size: 1.1em; border-bottom: 1px solid #eee; padding-bottom: 10px; }
         button { cursor: pointer; padding: 8px 12px; margin: 5px 0; border-radius: 4px; border: 1px solid #ccc; width: 100%; }
-        button:disabled { cursor: not-allowed; background-color: #eee; }
+        button:disabled { cursor: not-allowed; background-color: #eee; color: #999; }
         .primary { background-color: #0d6efd; color: white; border-color: #0d6efd; }
         .danger { background-color: #dc3545; color: white; border-color: #dc3545; }
-        input { padding: 8px; width: calc(100% - 18px); margin-bottom: 10px; }
+        input[type="text"] { padding: 8px; width: calc(100% - 18px); margin-bottom: 10px; }
         #consoleLog { border: 1px solid #eee; background: #333; color: #eee; height: 400px; overflow-y: auto; padding: 10px; font-size: 13px; white-space: pre-wrap; font-family: monospace; }
         .log-send { color: #ff8df8; }
         .log-receive { color: #8dff8d; }
@@ -23,17 +23,21 @@
     <div class="panel">
         <h2>1. 연결</h2>
         <input type="text" id="serverUrl" value="http://localhost:3001">
-        <button class="primary" onclick="connectAsManager()">🔑 개설자로 연결</button>
-        <button onclick="connectAsParticipant()">👤 참여자로 연결</button>
+        <button class="primary" onclick="connectAsManager()" id="connectManagerBtn">🔑 개설자로 연결</button>
+        <button onclick="connectAsParticipant()" id="connectParticipantBtn">👤 참여자로 연결</button>
         <button class="danger" onclick="disconnectSocket()" id="disconnectBtn" disabled>🔌 연결 끊기</button>
         <p id="connectionStatus"><strong>상태:</strong> 연결 안됨</p>
     </div>
 
     <div class="panel">
         <h2>2. 액션</h2>
-        <input type="text" id="roomCodeInput" value="ROOM101">
+        <input type="text" id="roomCodeInput" value="ROOM101" placeholder="방 코드">
         <button onclick="createRoom()" id="createBtn" disabled>🏫 강의실 생성</button>
         <button onclick="joinRoom()" id="joinBtn" disabled>🚪 강의실 입장</button>
+        <hr style="margin: 15px 0;">
+        <input type="text" id="chatInput" placeholder="메시지를 입력하세요..." onkeydown="if(event.key==='Enter') sendChat()" disabled>
+        <button onclick="sendChat()" id="chatBtn" disabled>💬 채팅 전송</button>
+        <hr style="margin: 15px 0;">
         <button onclick="leaveRoom()" id="leaveBtn" disabled>🚶 강의실 나가기</button>
     </div>
 
@@ -45,14 +49,37 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
         // --- 상태 관리 및 UI 요소 ---
-        let socket = null;
-        let currentUser = null;
+        let state = {
+            socket: null,
+            currentUser: null,
+            currentRoom: null,
+        };
 
         const serverUrlInput = document.getElementById("serverUrl");
         const statusP = document.getElementById("connectionStatus");
         const logDiv = document.getElementById("consoleLog");
         const roomCodeInput = document.getElementById("roomCodeInput");
-        const allButtons = document.querySelectorAll('button');
+        const connectManagerBtn = document.getElementById('connectManagerBtn');
+        const connectParticipantBtn = document.getElementById('connectParticipantBtn');
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const createBtn = document.getElementById("createBtn");
+        const joinBtn = document.getElementById("joinBtn");
+        const leaveBtn = document.getElementById("leaveBtn");
+        const chatInput = document.getElementById('chatInput');
+        const chatBtn = document.getElementById('chatBtn');
+        
+        // --- 이벤트 이름 관리 ---
+        const events = {
+            CREATE_ROOM: "createRoom",
+            JOIN_ROOM: "joinRoom",
+            LEAVE_ROOM: "leaveRoom",
+            SEND_MESSAGE: "sendMessage",
+            USER_JOINED: "userJoined",
+            USER_LEFT: "userLeft",
+            CLASSROOM_DELETED: "classroomDeleted",
+            MESSAGE: "message",
+            ERROR: "error",
+        };
 
         // --- UI 함수 ---
         function log(type, message) {
@@ -63,117 +90,135 @@
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        function updateUI() {
-            const isConnected = socket && socket.connected;
+        function updateUI(isConnected, inRoom = false) {
             statusP.innerHTML = isConnected 
-                ? `<strong>상태:</strong> 연결됨 (User: ${currentUser.username})`
+                ? `<strong>상태:</strong> 연결됨 (User: ${state.currentUser.username})`
                 : `<strong>상태:</strong> 연결 안됨`;
             
-            allButtons.forEach(btn => {
-                if (btn.id === 'disconnectBtn') {
-                    btn.disabled = !isConnected;
-                } else if (btn.onclick.toString().includes('connectAs')) {
-                    btn.disabled = isConnected;
-                } else {
-                    btn.disabled = !isConnected;
-                }
-            });
+            connectManagerBtn.disabled = isConnected;
+            connectParticipantBtn.disabled = isConnected;
+            disconnectBtn.disabled = !isConnected;
+
+            createBtn.disabled = !isConnected || inRoom;
+            joinBtn.disabled = !isConnected || inRoom;
+
+            leaveBtn.disabled = !inRoom;
+            chatBtn.disabled = !inRoom;
+            chatInput.disabled = !inRoom;
         }
 
         // --- 테스트용 데이터 생성 ---
         function createUserData(isManager = false) {
-            if (isManager) {
-                return { userId: 'manager-uuid-12345', username: '방장' };
-            }
+            if (isManager) return { userId: 'manager-uuid-12345', username: '방장' };
             const randomId = Math.floor(1000 + Math.random() * 9000);
             return { userId: `participant-${randomId}`, username: `참여자-${randomId}` };
         }
         
         // --- 소켓 연결 ---
         function connectSocket(userData) {
-            if (socket) return;
-            currentUser = userData;
+            if (state.socket) return;
+            state.currentUser = userData;
             
-            log('info', `Connecting to ${serverUrlInput.value} as ${currentUser.username}...`);
-            socket = io(serverUrlInput.value);
+            log('info', `Connecting to ${serverUrlInput.value} as ${state.currentUser.username}...`);
+            state.socket = io(serverUrlInput.value);
 
             // --- 모든 이벤트 리스너는 여기에 한 번만 등록 ---
-            socket.on('connect', () => {
-                log('info', `Socket connected with ID: ${socket.id}`);
-                updateUI();
+            state.socket.on('connect', () => {
+                log('info', `Socket connected with ID: ${state.socket.id}`);
+                updateUI(true, false);
             });
 
-            socket.on('disconnect', (reason) => {
+            state.socket.on('disconnect', (reason) => {
                 log('info', `Socket disconnected. Reason: ${reason}`);
-                socket = null;
-                currentUser = null;
-                updateUI();
+                state.socket = null;
+                state.currentUser = null;
+                state.currentRoom = null;
+                updateUI(false, false);
             });
 
-            socket.on('error', (error) => log('error', `Socket error: ${JSON.stringify(error)}`));
-            socket.on('userJoined', (data) => {
-                console.log(data);
-                log('receive', `USER_JOINED: ${data.joinUser} 님이 입장. 총 ${data.userCount}명`)
-            });
-            socket.on('userLeft', (data) => {
-                const reason = data.isManagerLeftTemporarily ? '(방장 임시 퇴장)' : '';
-                log('receive', `USER_LEFT: ${data.leftUser} 님이 퇴장${reason}. 남은 인원 ${data.userCount}명`);
-            });
-            socket.on('classroomDeleted', (data) => {
+            state.socket.on(events.ERROR, (error) => log('error', `Socket error: ${JSON.stringify(error)}`));
+            state.socket.on(events.USER_JOINED, (data) => log('receive', `USER_JOINED: ${data.joinUser} 님이 입장. 총 ${data.userCount}명`));
+            state.socket.on(events.USER_LEFT, (data) => log('receive', `USER_LEFT: ${data.leftUser} 님이 퇴장. 남은 인원 ${data.userCount}명`));
+            state.socket.on(events.CLASSROOM_DELETED, (data) => {
                 log('receive', `CLASSROOM_DELETED: ${data.message}`);
                 alert(data.message);
                 disconnectSocket();
             });
+            state.socket.on(events.MESSAGE, (data) => log('receive', `MESSAGE from ${data.username}: ${data.message}`));
         }
         
         function connectAsManager() { connectSocket(createUserData(true)); }
         function connectAsParticipant() { connectSocket(createUserData(false)); }
-        function disconnectSocket() { if (socket) socket.disconnect(); }
+        function disconnectSocket() { if (state.socket) state.socket.disconnect(); }
 
         // --- 액션 함수 ---
         function createRoom() {
-            if (!socket || !currentUser) { alert("먼저 연결부터 해주세요."); return; }
+            if (!state.socket) { alert("먼저 연결부터 해주세요."); return; }
+            if (!state.currentUser.userId.includes('manager')) { alert("개설자만 방을 생성할 수 있습니다."); return; }
 
             const payload = {
-                id: `cls-${Date.now()}`, // DB ID 시뮬레이션
-                name: `${currentUser.username}의 방`,
+                id: `cls-${Date.now()}`,
+                name: `${state.currentUser.username}의 방`,
                 code: roomCodeInput.value,
-                managerId: currentUser.userId,
-                managername: currentUser.username
+                managerId: state.currentUser.userId,
+                managerusername: state.currentUser.username
             };
             log('send', `CREATE_ROOM: ${JSON.stringify(payload)}`);
-            socket.emit('createRoom', payload, (response) => {
+            state.socket.emit(events.CREATE_ROOM, payload, (response) => {
                 log('ack', `CREATE_ROOM response: ${JSON.stringify(response)}`);
+                if (response.success) {
+                    state.currentRoom = response.classroom;
+                    updateUI(true, true);
+                }
             });
         }
 
         function joinRoom() {
-            if (!socket || !currentUser) { alert("먼저 연결부터 해주세요."); return; }
+            if (!state.socket) { alert("먼저 연결부터 해주세요."); return; }
             const payload = {
                 code: roomCodeInput.value,
-                userId: currentUser.userId,
-                username: currentUser.username
+                userId: state.currentUser.userId,
+                username: state.currentUser.username
             };
             log('send', `JOIN_ROOM: ${JSON.stringify(payload)}`);
-            socket.emit('joinRoom', payload, (response) => {
+            state.socket.emit(events.JOIN_ROOM, payload, (response) => {
                 log('ack', `JOIN_ROOM response: ${JSON.stringify(response)}`);
+                if (response.success) {
+                    state.currentRoom = response.classroom;
+                    updateUI(true, true);
+                }
             });
+        }
+        
+        function sendChat() {
+            if (!state.socket || !state.currentUser) { alert("방에 참여한 후 채팅을 보낼 수 있습니다."); return; }
+            const payload = {
+                roomCode: roomCodeInput.value,
+                userId: state.currentUser.userId,
+                username: state.currentUser.username,
+                message: document.getElementById('chatInput').value || `안녕하세요!`
+            };
+            log('send', `SEND_MESSAGE: ${JSON.stringify(payload)}`);
+            state.socket.emit(events.SEND_MESSAGE, payload, (response) => {
+                log('ack', `SEND_MESSAGE response: ${JSON.stringify(response)}`);
+            });
+            document.getElementById('chatInput').value = '';
         }
 
         function leaveRoom() {
-            if (!socket || !currentUser) { alert("먼저 연결부터 해주세요."); return; }
-            const payload = { code: roomCodeInput.value, userId: currentUser.userId };
+            if (!state.socket || !state.currentUser) { alert("먼저 연결부터 해주세요."); return; }
+            const payload = { code: roomCodeInput.value, userId: state.currentUser.userId };
             log('send', `LEAVE_ROOM: ${JSON.stringify(payload)}`);
-            socket.emit('leaveRoom', payload, (response) => {
+            state.socket.emit(events.LEAVE_ROOM, payload, (response) => {
                 log('ack', `LEAVE_ROOM response: ${JSON.stringify(response)}`);
                 if (response.success) {
-                  disconnectSocket();
+                  disconnectSocket(); // 성공적으로 나갔으면 연결도 끊음
                 }
             });
         }
 
         // 초기 UI 상태 설정
-        updateUI();
+        updateUI(false, false);
     </script>
 </body>
 </html>
