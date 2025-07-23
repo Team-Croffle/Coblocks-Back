@@ -107,10 +107,6 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         users: participants.map(p => ({ username: p.username })),
         isManager: room.managerId === data.userId,
         roomState: room.state,
-        // 재접속 시 현재 방 상태를 알려줌 (추후 추가 예정)
-        // currentSelectedQuest: room.currentSelectedQuestDetails,
-        // activityStarted: room.activityStarted,
-        // participantsAssignments: room.participantsAssignments,
         isGracePeriod: this.classroomService.isGracePeriodActive(room.id),
       }; // 방 참가 성공 응답
     
