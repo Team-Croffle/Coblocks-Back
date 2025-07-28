@@ -48,7 +48,7 @@ export class ActivityService {
 
         // 방 전체에 선택된 문제 정보 브로드캐스트
         const payload = { questInfo: questDetails };
-        server.to(room.id).emit('problemSetSelected', payload);
+        server.to(room.code).emit('problemSetSelected', payload);
 
         console.log(`[Service Activity] Manager selected quest ${data.questId} for room ${room.code}. Broadcasted to all.`);
 

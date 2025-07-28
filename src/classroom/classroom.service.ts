@@ -53,7 +53,7 @@ export class ClassroomService {
         const classroomId = this.roomCodeMap.get(code); // 방 코드로 방 ID 찾기
         return classroomId ? this.roomData.get(classroomId) : undefined; // 방 ID로 방 정보 찾기
     }
-
+ 
     //방 참가
     joinRoom(code: string, userId: string, username: string, socketId: string, server: Server): Classroom {
         const room = this.findRoomByCode(code); // 방 찾기
@@ -180,7 +180,7 @@ export class ClassroomService {
             if (room.participants.size < 4 && room.state === 'full') {
                 room.state = 'wait';
             }
-            return { success: true, message: '방을 성공적으로 나갔습니다!', participants: remainingParticipants, state: room.state };
+            return { success: false, message: '방을 성공적으로 나갔습니다!', participants: remainingParticipants, state: room.state };
         }
     }
 

@@ -68,11 +68,16 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         data.managername
       ); // 방 생성
 
+      // 테스트용 설정 -> JWT토큰으로 교체 예정
+      client.data.userId = data.managerId; // 소켓에 사용자 ID 저장
+      client.data.username = data.managername; // 소켓에 사용자 이름 저장
+
       client.join(newRoom.code); // 방에 참가
 
       return {
         success: true,
         message: '방이 성공적으로 개설되었습니다!',
+        classroom: { name: newRoom.name, code: newRoom.code }, // 클라이언트 UI 업데이트를 위한 방 정보
         users: Array.from(newRoom.participants.values()).map(p => ({ username: p.username })), // 참가자 목록
         isManager: true, // 개설자 권한 여부
         state: newRoom.state, // 방 상태
@@ -89,6 +94,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         client.id,
         this.server // 이전 소켓 강제 종료를 위해 서버 인스턴스를 전달(중복 방 참가 방지)
       ); // 방 참가
+
+      // 테스트용 설정 -> JWT토큰으로 교체 예정
+      client.data.userId = data.userId; // 소켓에 사용자 ID 저장
+      client.data.username = data.username; // 소켓에 사용자 이름 저장
 
       client.join(room.code); // 방에 참가
 
