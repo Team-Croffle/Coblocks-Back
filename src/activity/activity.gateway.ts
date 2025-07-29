@@ -6,7 +6,9 @@ import { ActivityService } from './activity.service';
 import { ManagerGuard } from 'src/auth/manager/manager.guard';
 import { SelectProblemDto } from './activityDto/SelectProblem.dto';
 import { SubmitSolutionDto } from './activityDto/SubmitSolution.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
 @WebSocketGateway({
   cors: {
     origin: '*',

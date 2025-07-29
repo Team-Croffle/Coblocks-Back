@@ -3,8 +3,17 @@ import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { Socket } from "socket.io";
 
+// 클라이언트는 소켓 서버에 접속할 때 아래와 같이 auth 정보를 포함시켜야 함
+/*
+    const socket = io("http://localhost:3001", {
+        auth: {
+            token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." // 로그인 시 받은 JWT
+        }
+    });
+*/
+
 // 소켓 연결 요청의 handshake 부분에서 토큰을 추출하는 함수
-const fromSocektAuth = (client: Socket): string | null => {
+const fromSocketAuth = (client: Socket): string | null => {
     return client.handshake.auth?.token;
 }
 
@@ -14,7 +23,7 @@ export class JwtStrategy extends PassportStrategy(Strategy){
         super({
             // 1. 토큰을 추출하는 방법을 지정
             jwtFromRequest: ExtractJwt.fromExtractors([
-                fromSocektAuth, // fromSocektAuth 함수를 통해 소켓에서 토큰 추출
+                fromSocketAuth, // fromSocketAuth 함수를 통해 소켓에서 토큰 추출
             ]),
             // 2. 토큰 만료를 무시할지 여부 (false로 설정하면 만료된 토큰은 거부됨)
             ignoreExpiration: false,
