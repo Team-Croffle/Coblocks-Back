@@ -33,7 +33,7 @@ export class ChatGateway {
     const message = {
       username: messageData.username,
       message: messageData.message,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString(), // 현지 시간(날짜+시간)
     }
 
     this.server.to(messageData.roomCode).emit('message', message);
