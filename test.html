@@ -125,7 +125,7 @@
             participants.forEach(p => {
                 const pDiv = document.createElement('div');
                 const isManager = state.currentRoom && p.userId === state.currentRoom.managerId ? ' (방장)' : '';
-                pDiv.textContent = `${p.username}${isManager}`;
+                pDiv.textContent = `${p.userName}${isManager}`;
                 participantDiv.appendChild(pDiv);
             });
         }
@@ -135,7 +135,7 @@
             const inRoom = !!state.currentRoom;
 
             statusP.innerHTML = isConnected 
-                ? `<strong>상태:</strong> 연결됨 (User: ${state.currentUser.username})`
+                ? `<strong>상태:</strong> 연결됨 (User: ${state.currentUser.userName})`
                 : `<strong>상태:</strong> 연결 안됨`;
             
             document.querySelectorAll('button').forEach(btn => {
@@ -150,9 +150,9 @@
         
         // --- 테스트용 데이터 생성 ---
         function createUserData(isManager = false) {
-            if (isManager) return { userId: 'manager-uuid-12345', username: '방장' };
+            if (isManager) return { userId: 'manager-uuid-12345', userName: '방장' };
             const randomId = Math.floor(1000 + Math.random() * 9000);
-            return { userId: `participant-uuid-${randomId}`, username: `참여자-${randomId}` };
+            return { userId: `participant-uuid-${randomId}`, userName: `참여자-${randomId}` };
         }
         
         // --- 소켓 연결 ---
@@ -160,7 +160,7 @@
             if (state.socket) return;
             state.currentUser = userData;
             
-            log('info', `Connecting to ${serverUrlInput.value} as ${state.currentUser.username}...`);
+            log('info', `Connecting to ${serverUrlInput.value} as ${state.currentUser.userName}...`);
             state.socket = io(serverUrlInput.value);
 
             // --- 모든 이벤트 리스너는 여기에 한 번만 등록 ---
@@ -174,10 +174,10 @@
             state.socket.on(events.USER_JOINED, (data) => { log('receive', `USER_JOINED: ${data.joinUser} 님이 입장`); updateParticipantList(data.users); });
             state.socket.on(events.USER_LEFT, (data) => { log('receive', `USER_LEFT: ${data.leftUser} 님이 퇴장`); updateParticipantList(data.users); });
             state.socket.on(events.CLASSROOM_DELETED, (data) => { log('receive', `CLASSROOM_DELETED: ${data.message}`); alert(data.message); disconnectSocket(); });
-            state.socket.on(events.MESSAGE, (data) => log('receive', `MESSAGE from ${data.username}: ${data.message}`));
+            state.socket.on(events.MESSAGE, (data) => log('receive', `MESSAGE from ${data.userName}: ${data.message}`));
             state.socket.on('problemSetSelected', (data) => log('receive', `PROBLEM_SELECTED: ${data.questInfo.quest_description}`));
             state.socket.on(events.ACTIVITY_BEGIN, (data) => { log('receive', `ACTIVITY_BEGIN: 파트 ${data.myPartNumber} 배정됨`); state.activityStarted = true; updateUI(); });
-            state.socket.on(events.SOLUTION_SUBMITTED_BY_USER, (data) => log('receive', `SUBMISSION: ${data.username}님이 파트 ${data.partNumber} 제출`));
+            state.socket.on(events.SOLUTION_SUBMITTED_BY_USER, (data) => log('receive', `SUBMISSION: ${data.userName}님이 파트 ${data.partNumber} 제출`));
             state.socket.on(events.FINAL_SUBMISSIONS_DATA, (data) => log('receive', `FINAL_SUBMISSIONS_DATA: ${Object.keys(data.finalSubmissions).length}개의 제출물 공유됨`));
             state.socket.on(events.ACTIVITY_ENDED, (data) => { log('receive', `ACTIVITY_ENDED: ${data.message}`); state.activityStarted = false; updateUI(); });
         }
@@ -190,8 +190,8 @@
         function createRoom() {
             if (!state.socket) return;
             const payload = {
-                id: `cls-${Date.now()}`, name: `${state.currentUser.username}의 방`, code: roomCodeInput.value,
-                managerId: state.currentUser.userId, managername: state.currentUser.username
+                id: `cls-${Date.now()}`, name: `${state.currentUser.userName}의 방`, code: roomCodeInput.value,
+                managerId: state.currentUser.userId, managerName: state.currentUser.userName
             };
             log('send', `createRoom: ${JSON.stringify(payload)}`);
             state.socket.emit('createRoom', payload, (res) => {
@@ -202,7 +202,7 @@
 
         function joinRoom() {
             if (!state.socket) return;
-            const payload = { code: roomCodeInput.value, userId: state.currentUser.userId, username: state.currentUser.username };
+            const payload = { code: roomCodeInput.value, userId: state.currentUser.userId, userName: state.currentUser.userName };
             log('send', `joinRoom: ${JSON.stringify(payload)}`);
             state.socket.emit('joinRoom', payload, (res) => {
                 log('ack', `joinRoom response: ${JSON.stringify(res)}`);
@@ -212,7 +212,7 @@
         
         function sendChat() {
             if (!state.socket || !state.currentRoom) return;
-            const payload = { roomCode: state.currentRoom.code, userId: state.currentUser.userId, username: state.currentUser.username, message: document.getElementById('chatInput').value || `...` };
+            const payload = { roomCode: state.currentRoom.code, userId: state.currentUser.userId, userName: state.currentUser.userName, message: document.getElementById('chatInput').value || `...` };
             log('send', `sendMessage: ${JSON.stringify(payload)}`);
             state.socket.emit('sendMessage', payload, (res) => log('ack', `sendMessage response: ${JSON.stringify(res)}`));
             document.getElementById('chatInput').value = '';

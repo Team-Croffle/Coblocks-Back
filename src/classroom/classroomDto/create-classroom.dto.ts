@@ -14,5 +14,5 @@ export class CreateClassroomDto {
     managerId: string;
 
     @IsString()
-    managername: string;
+    managerName: string;
 }

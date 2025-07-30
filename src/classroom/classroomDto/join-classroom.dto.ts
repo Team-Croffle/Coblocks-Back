@@ -8,5 +8,5 @@ export class JoinClassroomDto {
   userId: string; // 사용자 ID
 
   @IsString()
-  username: string; // 사용자 이름
+  userName: string; // 사용자 이름
 }

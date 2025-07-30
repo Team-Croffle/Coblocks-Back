@@ -1,6 +1,6 @@
 
 export interface Participant {
     userId: string;
-    username: string;
+    userName: string;
     socketId: string;
 }

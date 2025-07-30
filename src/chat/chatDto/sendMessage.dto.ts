@@ -5,7 +5,7 @@ export class SendMessageDto {
     roomCode: string;
 
     @IsString()
-    username: string;
+    userName: string;
 
     @IsString()
     @IsNotEmpty()

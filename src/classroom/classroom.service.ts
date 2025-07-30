@@ -17,7 +17,7 @@ export class ClassroomService {
     private activities = new Map<string, Activity>(); //key: classroomId 문제풀이활동 세션을 관리하기 위함
 
     // 방 생성
-    createRoom(id: string, name: string, code: string, managerId: string, managerSocketId: string, managername: string): Classroom{
+    createRoom(id: string, name: string, code: string, managerId: string, managerSocketId: string, managerName: string): Classroom{
         if (this.roomCodeMap.has(code)){ // 방 코드 중복 체크
             throw new WsException('이미 사용 중인 방 코드입니다.'); 
         }
@@ -34,7 +34,7 @@ export class ClassroomService {
         // 개설자를 참여자 목록에 추가
         newRoom.participants.set(managerSocketId, {
             userId: managerId,
-            username: managername,
+            userName: managerName,
             socketId: managerSocketId,
         });
 
@@ -44,7 +44,7 @@ export class ClassroomService {
         this.roomData.set(id, newRoom);
         this.roomCodeMap.set(code, id); // 방 코드와 ID 매핑
         this.userRoomMap.set(managerSocketId, id); // 개설자 소켓 ID와 방 ID 매핑
-        console.log(`[Service] Room Created: ${name} (${code}), Manager: ${managername} (${managerId})`);
+        console.log(`[Service] Room Created: ${name} (${code}), Manager: ${managerName} (${managerId})`);
         return newRoom
     }
 
@@ -55,7 +55,7 @@ export class ClassroomService {
     }
  
     //방 참가
-    joinRoom(code: string, userId: string, username: string, socketId: string, server: Server): Classroom {
+    joinRoom(code: string, userId: string, userName: string, socketId: string, server: Server): Classroom {
         const room = this.findRoomByCode(code); // 방 찾기
         if (!room || room === undefined) throw new WsException('존재하지 않는 방입니다.'); // 방이 존재하지 않으면 에러
 
@@ -67,7 +67,7 @@ export class ClassroomService {
             if (!isManager) {
                 throw new WsException('개설자가 일시적으로 자리를 비웠습니다. 잠시 후 다시 시도해주세요.');
             }// 개설자가 재접속하는 경우는 이 검사를 통과하여 아래 로직으로 진행됩니다.
-            console.log(`[Service] Manager ${username} is rejoining during grace period.`);
+            console.log(`[Service] Manager ${userName} is rejoining during grace period.`);
         } else {
             // 방이 정상 상태일 때
             // 개설자가 아닌 경우에만 만석 체크
@@ -110,10 +110,10 @@ export class ClassroomService {
             }
         }
 
-        const newParticipant: Participant = { userId, username, socketId };
+        const newParticipant: Participant = { userId, userName, socketId };
         room.participants.set(socketId, newParticipant); // 새 참가자 추가
         this.userRoomMap.set(socketId, room.id); // 새 소켓 ID와 방 ID 매핑
-        console.log(`[Service] User ${username} (${userId}) joined room ${code} with socket ${socketId}.`);
+        console.log(`[Service] User ${userName} (${userId}) joined room ${code} with socket ${socketId}.`);
 
         if (room.participants.size >= 4) room.state = 'full';
         
@@ -134,14 +134,14 @@ export class ClassroomService {
         // 메모리에서 사용자 제거
         room.participants.delete(socketId);
         this.userRoomMap.delete(socketId); // 사용자-방 매핑에서 제거
-        console.log(`[Service] User ${leftUser.username} (socket: ${socketId}) disconnected from room ${room.id}.`);
+        console.log(`[Service] User ${leftUser.userName} (socket: ${socketId}) disconnected from room ${room.id}.`);
 
         const wasManager = room.managerId === leftUser.userId; // 방장이었는지 확인
         let roomTerminated = false;
 
         if (wasManager) {
             // 개설자일 경우 유예기간 시작
-            console.log(`[Service] Manager ${leftUser.username} disconnected. Starting grace period for room ${room.id}.`);
+            console.log(`[Service] Manager ${leftUser.userName} disconnected. Starting grace period for room ${room.id}.`);
             room.managerSocketId = null;
             room.state = 'grace_period';
             this.startManagerGracePeriod(classroomId, leftUser.userId, server);

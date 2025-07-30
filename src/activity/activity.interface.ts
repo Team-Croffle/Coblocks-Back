@@ -8,7 +8,7 @@ export interface Activity {
     // 각 참여자에게 할당된 파트 번호 정보
     partAssignments: {
         userId: string;
-        username: string;
+        userName: string;
         partNumber: number;
     }[];
     /**

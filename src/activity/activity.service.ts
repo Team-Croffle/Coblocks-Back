@@ -89,7 +89,7 @@ export class ActivityService {
 
         const assignments = participants.map((participant, index) => ({
             userId: participant.userId,
-            username: participant.username,
+            userName: participant.userName,
             partNumber: index + 1, // 1부터 시작하는 파트 번호
         }));
 
@@ -155,7 +155,7 @@ export class ActivityService {
         }
 
         const userId = (client.data as any).userId; // 클라이언트의 userId를 가져옵니다.
-        const username = (client.data as any).username; // 클라이언트의 username을 가져옵니다.
+        const userName = (client.data as any).userName; // 클라이언트의 userName을 가져옵니다.
 
         // 제출자의 파트 번호 조회
         const assignment = activity.partAssignments.find(a => a.userId === userId);
@@ -170,12 +170,12 @@ export class ActivityService {
         // 방 전체에 제출 완료 알림 브로드캐스트
         const payload = {
             userId: userId,
-            username: username,
+            userName: userName,
             partNumber: partNumber,
-            message: `${username} 님이 솔루션을 제출했습니다.`,
+            message: `${userName} 님이 솔루션을 제출했습니다.`,
         };
         server.to(room.code).emit('submitSolution', payload);
-        console.log(`[Service Activity] User ${username} submitted solution for part ${partNumber} in room ${classroomId}.`);
+        console.log(`[Service Activity] User ${userName} submitted solution for part ${partNumber} in room ${classroomId}.`);
         return { success: true, message: '성공적으로 제출되었습니다.' };
     }
 

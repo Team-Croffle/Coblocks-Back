@@ -47,8 +47,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       const remainingParticipants = Array.from(room.participants.values());
 
       this.server.to(room.code).emit('userLeft', {
-        leftUser: leftUser.username,
-        users: remainingParticipants.map(p => ({ username: p.username })),
+        leftUser: leftUser.userName,
+        users: remainingParticipants.map(p => ({ userName: p.userName })),
         userCount: remainingParticipants.length,
         isManagerLeftTemporarily: wasManager,
       });
@@ -58,20 +58,20 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
   @SubscribeMessage('createRoom')
   handleCreateRoom(@MessageBody() data: CreateClassroomDto, @ConnectedSocket() client: Socket) {
-    console.log(`[Gateway] Create room request from user ${data.managername} with code ${data.code}.`);
-    
+    console.log(`[Gateway] Create room request from user ${data.managerName} with code ${data.code}.`);
+
       const newRoom = this.classroomService.createRoom(
         data.id,
         data.name,
         data.code,
         data.managerId,
         client.id,
-        data.managername
+        data.managerName
       ); // 방 생성
 
       // 테스트용 설정 -> JWT토큰으로 교체 예정
       client.data.userId = data.managerId; // 소켓에 사용자 ID 저장
-      client.data.username = data.managername; // 소켓에 사용자 이름 저장
+      client.data.userName = data.managerName; // 소켓에 사용자 이름 저장
 
       client.join(newRoom.code); // 방에 참가
 
@@ -79,7 +79,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         success: true,
         message: '방이 성공적으로 개설되었습니다!',
         classroom: { name: newRoom.name, code: newRoom.code }, // 클라이언트 UI 업데이트를 위한 방 정보
-        users: Array.from(newRoom.participants.values()).map(p => ({ username: p.username })), // 참가자 목록
+        users: Array.from(newRoom.participants.values()).map(p => ({ userName: p.userName })), // 참가자 목록
         isManager: true, // 개설자 권한 여부
         state: newRoom.state, // 방 상태
       }; // 방 개설 성공 응답
@@ -91,22 +91,22 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       const room = this.classroomService.joinRoom(
         data.code,
         data.userId,
-        data.username,
+        data.userName,
         client.id,
         this.server // 이전 소켓 강제 종료를 위해 서버 인스턴스를 전달(중복 방 참가 방지)
       ); // 방 참가
 
       // 테스트용 설정 -> JWT토큰으로 교체 예정
       client.data.userId = data.userId; // 소켓에 사용자 ID 저장
-      client.data.username = data.username; // 소켓에 사용자 이름 저장
+      client.data.userName = data.userName; // 소켓에 사용자 이름 저장
 
       client.join(room.code); // 방에 참가
 
       const participants = Array.from(room.participants.values());
 
       client.to(room.code).emit('userJoined', {
-        joinUser: data.username,
-        users: participants.map(p => ({ username: p.username })),
+        joinUser: data.userName,
+        users: participants.map(p => ({ userName: p.userName })),
         userCount: participants.length,
       })
 
@@ -114,7 +114,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         success: true,
         message: '방에 입장했습니다!',
         classroom: { name: room.name, code: room.code },
-        users: participants.map(p => ({ username: p.username })),
+        users: participants.map(p => ({ userName: p.userName })),
         isManager: room.managerId === data.userId,
         roomState: room.state,
         isGracePeriod: this.classroomService.isGracePeriodActive(room.id),
@@ -141,8 +141,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       client.to(data.code).emit('userLeft', {
-        leftUser: client.data.username,
-        users: remainingParticipants.map(p => ({ username: p.username })),
+        leftUser: client.data.userName,
+        users: remainingParticipants.map(p => ({ userName: p.userName })),
         userCount: remainingParticipants.length,
         isManagerLeftTemporarily: false,
     });
