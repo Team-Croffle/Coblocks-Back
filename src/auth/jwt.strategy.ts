@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { Socket } from "socket.io";
@@ -19,7 +20,7 @@ const fromSocketAuth = (client: Socket): string | null => {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy){
-    constructor() {
+    constructor(private readonly configService: ConfigService) {
         super({
             // 1. 토큰을 추출하는 방법을 지정
             jwtFromRequest: ExtractJwt.fromExtractors([
@@ -28,7 +29,7 @@ export class JwtStrategy extends PassportStrategy(Strategy){
             // 2. 토큰 만료를 무시할지 여부 (false로 설정하면 만료된 토큰은 거부됨)
             ignoreExpiration: false,
             // 3. 토큰 서명에 사용할 키 (Supabase와 동일해야 함)
-            secretOrKey: process.env.SUPABASE_JWT_SECRET!,
+            secretOrKey: configService.get<string>('SUPABASE_JWT_SECRET')!,
             // !는 해당 변수는 항상 존재한다고 가정(반드시 .env 파일에 정의되어 있어야 함)
         });
     }
