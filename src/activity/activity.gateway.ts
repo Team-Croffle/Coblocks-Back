@@ -43,7 +43,7 @@ export class ActivityGateway {
 
   @UseGuards(ManagerGuard) // 방장 권한 확인 가드 사용
   @SubscribeMessage('activity:end')
-  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { roomCode: string}) {
+  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string}) {
     return this.activityService.endActivity(client, this.server, data);
   }
 

@@ -32,7 +32,7 @@ export class ActivityService {
 
     // 문제 세트 선택
     async selectProblemSet(client: Socket, server: Server, data: SelectProblemDto) {
-        const room = this.classroomService.findRoomByCode(data.roomCode);
+        const room = this.classroomService.findRoomByCode(data.code);
         if (!room) {
             throw new WsException('해당 방을 찾을 수 없습니다.');
         }
@@ -182,7 +182,7 @@ export class ActivityService {
     // 최종 제출 요청
     requestFinalSubmission(client: Socket, server: Server, data: any) {
         // 방 정보 조회
-        const room = this.classroomService.findRoomByCode(data.roomCode);
+        const room = this.classroomService.findRoomByCode(data.code);
         if (!room) {
             throw new WsException('해당 방을 찾을 수 없습니다.');
         }
@@ -202,8 +202,8 @@ export class ActivityService {
     }
 
     // 활동 종료
-    endActivity(client: Socket, server: Server, data: { roomCode: string }) {
-        const room = this.classroomService.findRoomByCode(data.roomCode);
+    endActivity(client: Socket, server: Server, data: { code: string }) {
+        const room = this.classroomService.findRoomByCode(data.code);
         if (!room) {
             throw new WsException('해당 방을 찾을 수 없습니다.');
         }

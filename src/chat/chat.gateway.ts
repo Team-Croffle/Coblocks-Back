@@ -24,7 +24,7 @@ export class ChatGateway {
   @SubscribeMessage('sendMessage')
   handleMessage(@MessageBody() messageData: SendMessageDto, @ConnectedSocket() client: Socket) {
     // 
-    const room = this.classroomService.findRoomByCode(messageData.roomCode);
+    const room = this.classroomService.findRoomByCode(messageData.code);
     if (!room) {
       throw new WsException('존재하지 않는 방입니다.');
     }
@@ -38,7 +38,7 @@ export class ChatGateway {
       timestamp: new Date().toLocaleString(), // 현지 시간(날짜+시간)
     }
 
-    this.server.to(messageData.roomCode).emit('message', message);
+    this.server.to(messageData.code).emit('message', message);
     return { success: true, message: 'Message sent successfully' };
   }
 }

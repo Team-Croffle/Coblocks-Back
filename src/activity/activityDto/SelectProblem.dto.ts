@@ -5,5 +5,5 @@ export class SelectProblemDto {
     questId: string;
 
     @IsString()
-    roomCode: string;
+    code: string;
 }

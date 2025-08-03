@@ -2,7 +2,7 @@ import { IsNotEmpty, IsString } from "class-validator";
 
 export class SendMessageDto {
     @IsString()
-    roomCode: string;
+    code: string;
 
     @IsString()
     userName: string;
