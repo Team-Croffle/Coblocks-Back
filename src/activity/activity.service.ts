@@ -4,6 +4,8 @@ import { ClassroomService } from 'src/classroom/classroom.service';
 import { SelectProblemDto } from './activityDto/SelectProblem.dto';
 import { WsException } from '@nestjs/websockets';
 import { SubmitSolutionDto } from './activityDto/SubmitSolution.dto';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseService } from 'src/database/supabase.service';
 
 // ✨ DB 조회를 대체할 더미 퀘스트 데이터 생성 함수
 const createDummyQuestData = (questId: string) => {
@@ -28,7 +30,10 @@ const createDummyQuestData = (questId: string) => {
 
 @Injectable()
 export class ActivityService {
-    constructor(private readonly classroomService: ClassroomService) {}
+    private readonly supabase: SupabaseClient; // supabase 클라이언트를 담을 변수
+    constructor(private readonly classroomService: ClassroomService, private readonly supabaseService: SupabaseService) {
+        this.supabase = this.supabaseService.getClient(); // supabase 클라이언트 초기화
+    }
 
     // 문제 세트 선택
     async selectProblemSet(client: Socket, server: Server, data: SelectProblemDto) {
@@ -37,10 +42,14 @@ export class ActivityService {
             throw new WsException('해당 방을 찾을 수 없습니다.');
         }
 
-        // 더미 데이터 생성함수 호출(데이터베이스 사용으로 대체 예정)
-        const questDetails = createDummyQuestData(data.questId);
+        // 더미 데이터 생성함수 호출
+        const { data: questDetails, error: rpcError } = await this.supabase.rpc('get_quest_for_solving', { p_quest_id: data.questId });
+        if (rpcError) {
+            console.error(`[Activity Service] Supabase RPC error:`, rpcError.message);
+            throw new WsException('문제를 불러오는 중 오류가 발생했습니다.');
+        }
         if (!questDetails) {
-            throw new WsException('문제 세트를 찾을 수 없습니다.');
+            throw new WsException('해당 ID의 문제를 찾을 수 없습니다.');
         }
 
         // ClassroomService를 통해 방의 활동 상태 업데이트
