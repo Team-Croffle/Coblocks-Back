@@ -4,6 +4,8 @@ import { WsException } from '@nestjs/websockets';
 import { Participant } from './Participant.interface';
 import { Server } from 'socket.io';
 import { Activity } from 'src/activity/activity.interface';
+import { SupabaseService } from 'src/database/supabase.service';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 const MANAGER_RECONNECT_TIMEOUT = 60000; // 1분
 
@@ -15,6 +17,12 @@ export class ClassroomService {
     private roomRecoveryTimers = new Map<string, NodeJS.Timeout>(); // key: classroomId, value: timerId
 
     private activities = new Map<string, Activity>(); //key: classroomId 문제풀이활동 세션을 관리하기 위함
+
+    private readonly supabase: SupabaseClient; // supabase 클라이언트를 담을 변수
+
+    constructor(private readonly supabaseService: SupabaseService) {
+        this.supabase = this.supabaseService.getClient(); // Supabase 클라이언트 초기화
+    }
 
     // 방 생성
     createRoom(id: string, name: string, code: string, managerId: string, managerSocketId: string, managerName: string): Classroom{
@@ -44,7 +52,7 @@ export class ClassroomService {
         this.roomData.set(id, newRoom);
         this.roomCodeMap.set(code, id); // 방 코드와 ID 매핑
         this.userRoomMap.set(managerSocketId, id); // 개설자 소켓 ID와 방 ID 매핑
-        console.log(`[Service] Room Created: ${name} (${code}), Manager: ${managerName} (${managerId})`);
+        console.log(`[ClassroomService] Room Created: ${name} (${code}), Manager: ${managerName} (${managerId})`);
         return newRoom
     }
 
@@ -53,7 +61,7 @@ export class ClassroomService {
         const classroomId = this.roomCodeMap.get(code); // 방 코드로 방 ID 찾기
         return classroomId ? this.roomData.get(classroomId) : undefined; // 방 ID로 방 정보 찾기
     }
- 
+
     //방 참가
     joinRoom(code: string, userId: string, userName: string, socketId: string, server: Server): Classroom {
         const room = this.findRoomByCode(code); // 방 찾기
@@ -67,7 +75,7 @@ export class ClassroomService {
             if (!isManager) {
                 throw new WsException('개설자가 일시적으로 자리를 비웠습니다. 잠시 후 다시 시도해주세요.');
             }// 개설자가 재접속하는 경우는 이 검사를 통과하여 아래 로직으로 진행됩니다.
-            console.log(`[Service] Manager ${userName} is rejoining during grace period.`);
+            console.log(`[ClassroomService] Manager ${userName} is rejoining during grace period.`);
         } else {
             // 방이 정상 상태일 때
             // 개설자가 아닌 경우에만 만석 체크
@@ -92,7 +100,7 @@ export class ClassroomService {
 
         // 이전 소켓이 존재하면 해당 소켓을 제거하고 새로 참가
         if (oldSocketId && oldSocketId !== socketId) {
-            console.log(`[Service] User ${userId} is rejoining. Removing old socket ${oldSocketId}.`);
+            console.log(`[ClassroomService] User ${userId} is rejoining. Removing old socket ${oldSocketId}.`);
             room.participants.delete(oldSocketId); // 기존 소켓 정보 제거
             this.userRoomMap.delete(oldSocketId); // 사용자-방 매핑에서 제거
             const oldSocket = server.sockets.sockets.get(oldSocketId);
@@ -101,19 +109,19 @@ export class ClassroomService {
 
         // 개설자 재접속 시 유예기간 타이머 취소
         if (room.managerId === userId) {
-            console.log(`[Service] Manager ${userId} joining/rejoining room ${room.id}.`);
+            console.log(`[ClassroomService] Manager ${userId} joining/rejoining room ${room.id}.`);
             room.managerSocketId = socketId; // 개설자 소켓 ID 업데이트
             if (this.roomRecoveryTimers.has(room.id)) {
                 clearTimeout(this.roomRecoveryTimers.get(room.id)); // 유예기간 타이머 취소
                 this.roomRecoveryTimers.delete(room.id);
-                console.log(`[Service] Recovery timer for room ${room.id} cancelled.`);
+                console.log(`[ClassroomService] Recovery timer for room ${room.id} cancelled.`);
             }
         }
 
         const newParticipant: Participant = { userId, userName, socketId };
         room.participants.set(socketId, newParticipant); // 새 참가자 추가
         this.userRoomMap.set(socketId, room.id); // 새 소켓 ID와 방 ID 매핑
-        console.log(`[Service] User ${userName} (${userId}) joined room ${code} with socket ${socketId}.`);
+        console.log(`[ClassroomService] User ${userName} (${userId}) joined room ${code} with socket ${socketId}.`);
 
         if (room.participants.size >= 4) room.state = 'full';
         
@@ -134,20 +142,20 @@ export class ClassroomService {
         // 메모리에서 사용자 제거
         room.participants.delete(socketId);
         this.userRoomMap.delete(socketId); // 사용자-방 매핑에서 제거
-        console.log(`[Service] User ${leftUser.userName} (socket: ${socketId}) disconnected from room ${room.id}.`);
+        console.log(`[ClassroomService] User ${leftUser.userName} (socket: ${socketId}) disconnected from room ${room.id}.`);
 
         const wasManager = room.managerId === leftUser.userId; // 방장이었는지 확인
         let roomTerminated = false;
 
         if (wasManager) {
             // 개설자일 경우 유예기간 시작
-            console.log(`[Service] Manager ${leftUser.userName} disconnected. Starting grace period for room ${room.id}.`);
+            console.log(`[ClassroomService] Manager ${leftUser.userName} disconnected. Starting grace period for room ${room.id}.`);
             room.managerSocketId = null;
             room.state = 'grace_period';
             this.startManagerGracePeriod(classroomId, leftUser.userId, server);
         } else if (room.participants.size === 0) {
             // 일반 사용자가 마지막으로 나간 경우, 방 즉시 삭제
-            console.log(`[Service] Room ${classroomId} is now empty. Deleting room immediately.`);
+            console.log(`[ClassroomService] Room ${classroomId} is now empty. Deleting room immediately.`);
             this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
             roomTerminated = true;
         }
@@ -175,12 +183,12 @@ export class ClassroomService {
             if (room.participants.size === 0) {
                 // 마지막 참여자가 명시적으로 나간 경우에도 방 종료
                 this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
-                return { success: false, message: '마지막 참여자가 나가 방이 삭제되었습니다.', remainingParticipants: [] };
+                return { success: true, message: '마지막 참여자가 나가 방이 삭제되었습니다.', remainingParticipants: [] };
             }
             if (room.participants.size < 4 && room.state === 'full') {
                 room.state = 'wait';
             }
-            return { success: false, message: '방을 성공적으로 나갔습니다!', participants: remainingParticipants, state: room.state };
+            return { success: true, message: '방을 성공적으로 나갔습니다!', participants: remainingParticipants, state: room.state };
         }
     }
 
@@ -189,12 +197,12 @@ export class ClassroomService {
     }
 
     startManagerGracePeriod(classroomId: string, managerId: string, server: Server) {
-        console.log(`[Service] Starting ${MANAGER_RECONNECT_TIMEOUT / 1000}s grace period for manager ${managerId} in room ${classroomId}.`);
+        console.log(`[ClassroomService] Starting ${MANAGER_RECONNECT_TIMEOUT / 1000}s grace period for manager ${managerId} in room ${classroomId}.`);
         const timerId = setTimeout(async () => {
             const room = this.roomData.get(classroomId);
             // 유예 기간 만료 시, 여전히 개설자가 재접속하지 않았는지 최종 확인
             if (room && this.isGracePeriodActive(classroomId)) {
-                console.log(`[Service] Grace period expired for room ${classroomId}. Terminating.`);
+                console.log(`[ClassroomService] Grace period expired for room ${classroomId}. Terminating.`);
                 await this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
             }
             this.roomRecoveryTimers.delete(classroomId);
@@ -206,37 +214,51 @@ export class ClassroomService {
     async terminateRoomImmediately(classroomId: string, server: Server, userRoomMap: Map<string, string>) {
         const room = this.roomData.get(classroomId);
         if (!room) return false;
-        console.log(`[Service] Terminating room ${classroomId} immediately.`);
+        console.log(`[ClassroomService] Terminating room ${classroomId} immediately.`);
 
-        if (this.roomRecoveryTimers.has(classroomId)) {
-            clearTimeout(this.roomRecoveryTimers.get(classroomId));
-            this.roomRecoveryTimers.delete(classroomId);
+        if (this.roomRecoveryTimers.has(classroomId)) {  // 유예 기간 타이머가 설정되어 있다면
+            clearTimeout(this.roomRecoveryTimers.get(classroomId)); // 타이머를 정리
+            this.roomRecoveryTimers.delete(classroomId); // 타이머 삭제
         }
 
-        server.to(room.code).emit('classroom:deleted', {
-            classroomId: room.id,
-            message: `강의실이 종료되었습니다.`,
-        });
-        
         try {
+            // Supabase에서 방 정보 삭제
+            const { error: rpcError } = await this.supabase.rpc('handle_delete_classroom', {
+                target_classroom_id: classroomId
+            });
+
+            if (rpcError) {
+                throw rpcError;
+            }
+            console.log(`[ClassroomService] Classroom ${room.id} deleted from DB Successfully.`);
+
+            // DB 삭제가 성공했을 때만 메모리에서 방 정보 삭제
+            server.to(room.code).emit('classroom:deleted', {
+                classroomId: room.id,
+                message: `강의실이 종료되었습니다.`,
+            });
+
+            // 방에 있는 모든 소켓 연결 강제 해제
             const socketsInRoom = await server.in(room.code).fetchSockets();
             socketsInRoom.forEach(sock => sock.disconnect(true));
-        } catch (err) { console.error(`[Service] Error disconnecting sockets in ${classroomId}: ${err.message}`); }
 
-        try {
-            //await ClassroomModel.delete(room.id);
-            console.log(`[Service] Classroom ${room.id} deleted from DB.`);
-        } catch (dbError) {
-            console.error(`[Service] DB delete error for ${room.id}: ${dbError.message}`);
+            // 메모리 정리
+            for (const socketId of room.participants.keys()) {
+                userRoomMap.delete(socketId);
+            }   
+            this.roomCodeMap.delete(room.code);
+            this.roomData.delete(classroomId);
+
+            return true;
+        } catch (error) {
+            console.error(`[ClassroomService] DB delete error for ${room.id}: ${error.message}`);
+            if (room.managerSocketId) {
+                server.to(room.managerSocketId).emit('error', {
+                    message: '강의실을 종료하는 데 실패했습니다. 잠시 후 다시 시도해주세요.',
+                });
+            }
+            return false;
         }
-        
-        // 메모리 정리
-        for (const socketId of room.participants.keys()) {
-            userRoomMap.delete(socketId);
-        }   
-        this.roomCodeMap.delete(room.code);
-        this.roomData.delete(classroomId);
-        return true;
     }
 
     // --- 활동 관련 메소드 ---
@@ -251,7 +273,7 @@ export class ClassroomService {
                 partAssignments: [],
                 submissions: {},
             });
-            console.log(`[Service: Activity] Initialized activity for classroom ${classroomId}`);
+            console.log(`[ClassroomService: Activity] Initialized activity for classroom ${classroomId}`);
         }
     }
 
@@ -261,9 +283,9 @@ export class ClassroomService {
         if (activity) {
             activity.currentQuest = questDetails;
             activity.status = 'waiting'; // 문제가 선택되었으므로 '시작 대기' 상태
-            console.log(`[Service] Quest ${questDetails.quest_id} selected for room ${classroomId}`);
+            console.log(`[ClassroomService] Quest ${questDetails.quest_id} selected for room ${classroomId}`);
         } else {
-            console.error(`[Service] Failed to set quest. Activity state not found for room ${classroomId}`);
+            console.error(`[ClassroomService] Failed to set quest. Activity state not found for room ${classroomId}`);
         }
     }
 
@@ -273,7 +295,7 @@ export class ClassroomService {
         if (activity && activity.status === 'waiting') {
             activity.status = 'active'; // 'waiting' -> 'active'
             activity.partAssignments = assignments;
-            console.log(`[Service] Activity status changed to 'active' for room ${classroomId}.`);
+            console.log(`[ClassroomService] Activity status changed to 'active' for room ${classroomId}.`);
             return activity;
         }
         return null; // 활동을 시작할 수 없는 경우(이미 시작 되었거나 종료됨)
@@ -291,7 +313,7 @@ export class ClassroomService {
                 partNumber: partNumber,
                 content: submissionContent,
             };
-            console.log(`[Service] Submission updated for user ${userId} in room ${classroomId}.`);
+            console.log(`[ClassroomService] Submission updated for user ${userId} in room ${classroomId}.`);
             return activity;
         }
         return null; // 제출할 수 없는 경우
@@ -306,7 +328,7 @@ export class ClassroomService {
             activity.currentQuest = null; // 현재 문제 세트 초기화
             activity.partAssignments = []; // 파트 배정 초기화
             activity.submissions = {}; // 제출물 초기화
-            console.log(`[Service] Activity ended and reset for room ${classroomId}.`);
+            console.log(`[ClassroomService] Activity ended and reset for room ${classroomId}.`);
             return true;
         }
         // 종료할 활동이 없는 경우 (이미 초기 상태)

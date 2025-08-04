@@ -124,14 +124,15 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // 방 나가기 요청 처리(명시적 퇴장 요청)
   @SubscribeMessage('leaveRoom')
-  handleLeaveRoom(@MessageBody() data: {code: string, userId: string}, @ConnectedSocket() client: Socket) {
-    console.log(`[Gateway] leaveRoom request from ${data.userId} for room ${data.code}`);
+  handleLeaveRoom(@MessageBody() data: {code: string}, @ConnectedSocket() client: Socket) {
+    const user = (client as any).user; // JWT 인증을 통해 사용자 정보 가져오기 (테스트 필요 작성 기준 - 8/4)
+    console.log(`[Gateway] leaveRoom request from ${user.userId} for room ${data.code}`);
     
-    const result = this.classroomService.leaveRoom(data.code, data.userId, client.id, this.server);
+    const result = this.classroomService.leaveRoom(data.code, user.userId, client.id, this.server);
 
     if (result.success) {
       // 방이 종료된 경우 추가 이벤트 불필요 (leaveRoom 내부의 terminateRoomImmediately 호출로 처리됨)
-      console.log(`[Gateway] Room ${data.code} terminated by explicit leave of user ${data.userId}.`);
+      console.log(`[Gateway] Room ${data.code} terminated by explicit leave of user ${user.userId}.`);
     } else {
       // 일반 참가자 퇴장
       const remainingParticipants = result.participants;
