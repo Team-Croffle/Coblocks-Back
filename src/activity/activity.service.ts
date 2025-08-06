@@ -207,7 +207,7 @@ export class ActivityService {
 
         console.log(`[Service Activity] Final submissions for room ${room.code} broadcasted by manager.`);
     
-        return { success: true, message: '모든 제출물을 공유했습니다.' };
+        return { success: true, message: '모든 제출물을 공유했습니다.', finalSubmissions: allSubmissions }; // 응답에 제출물 포함
     }
 
     // 활동 종료
