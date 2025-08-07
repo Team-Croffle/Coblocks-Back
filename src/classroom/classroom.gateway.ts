@@ -7,6 +7,7 @@ import { JoinClassroomDto } from './classroomDto/join-classroom.dto';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { events } from 'src/utils/events';
 
 @UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
 @WebSocketGateway({
@@ -46,7 +47,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       // 방이 유지되는 경우
       const remainingParticipants = Array.from(room.participants.values());
 
-      this.server.to(room.code).emit('userLeft', {
+      this.server.to(room.code).emit(events.CLASSROOM_USER_LEFT, {
         leftUser: leftUser.userName,
         users: remainingParticipants.map(p => ({ userName: p.userName })),
         userCount: remainingParticipants.length,
@@ -56,7 +57,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
-  @SubscribeMessage('createRoom')
+  @SubscribeMessage(events.CLASSROOM_CREATE)
   handleCreateRoom(@MessageBody() data: CreateClassroomDto, @ConnectedSocket() client: Socket) {
     console.log(`[Gateway] Create room request from user ${data.managerName} with code ${data.code}.`);
 
@@ -85,7 +86,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }; // 방 개설 성공 응답
   }
 
-  @SubscribeMessage('joinRoom')
+  @SubscribeMessage(events.CLASSROOM_JOIN)
   handleJoinRoom(@MessageBody() data: JoinClassroomDto, @ConnectedSocket() client: Socket) {
 
       const room = this.classroomService.joinRoom(
@@ -104,7 +105,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       const participants = Array.from(room.participants.values());
 
-      client.to(room.code).emit('userJoined', {
+      client.to(room.code).emit(events.CLASSROOM_USER_JOINED, {
         joinUser: data.userName,
         users: participants.map(p => ({ userName: p.userName })),
         userCount: participants.length,
@@ -123,7 +124,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   // 방 나가기 요청 처리(명시적 퇴장 요청)
-  @SubscribeMessage('leaveRoom')
+  @SubscribeMessage(events.CLASSROOM_LEAVE)
   handleLeaveRoom(@MessageBody() data: {code: string}, @ConnectedSocket() client: Socket) {
     const user = (client as any).user; // JWT 인증을 통해 사용자 정보 가져오기 (테스트 필요 작성 기준 - 8/4)
     console.log(`[Gateway] leaveRoom request from ${user.userId} for room ${data.code}`);
@@ -141,7 +142,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         return { success: false, message: '방에 참가자가 없습니다.' };
       }
 
-      client.to(data.code).emit('userLeft', {
+      client.to(data.code).emit(events.CLASSROOM_USER_LEFT, {
         leftUser: client.data.userName,
         users: remainingParticipants.map(p => ({ userName: p.userName })),
         userCount: remainingParticipants.length,

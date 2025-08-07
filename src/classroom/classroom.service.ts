@@ -6,6 +6,7 @@ import { Server } from 'socket.io';
 import { Activity } from 'src/activity/activity.interface';
 import { SupabaseService } from 'src/database/supabase.service';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { events } from 'src/utils/events';
 
 const MANAGER_RECONNECT_TIMEOUT = 60000; // 1분
 
@@ -233,7 +234,7 @@ export class ClassroomService {
             console.log(`[ClassroomService] Classroom ${room.id} deleted from DB Successfully.`);
 
             // DB 삭제가 성공했을 때만 메모리에서 방 정보 삭제
-            server.to(room.code).emit('classroom:deleted', {
+            server.to(room.code).emit(events.CLASSROOM_DELETED, {
                 classroomId: room.id,
                 message: `강의실이 종료되었습니다.`,
             });

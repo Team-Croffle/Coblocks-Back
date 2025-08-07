@@ -6,6 +6,7 @@ import { WsException } from '@nestjs/websockets';
 import { ClassroomService } from 'src/classroom/classroom.service';
 import { SendMessageDto } from './chatDto/sendMessage.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { events } from 'src/utils/events';
 
 @UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
 @WebSocketGateway({
@@ -21,7 +22,7 @@ export class ChatGateway {
   server: Server;
 
 
-  @SubscribeMessage('sendMessage')
+  @SubscribeMessage(events.CHAT_SEND_MESSAGE)
   handleMessage(@MessageBody() messageData: SendMessageDto, @ConnectedSocket() client: Socket) {
     // 
     const room = this.classroomService.findRoomByCode(messageData.code);
@@ -38,7 +39,7 @@ export class ChatGateway {
       timestamp: new Date().toLocaleString(), // 현지 시간(날짜+시간)
     }
 
-    this.server.to(messageData.code).emit('message', message);
+    this.server.to(messageData.code).emit(events.CHAT_MESSAGE, message);
     return { success: true, message: 'Message sent successfully' };
   }
 }
