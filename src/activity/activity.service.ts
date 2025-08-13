@@ -6,6 +6,7 @@ import { WsException } from '@nestjs/websockets';
 import { SubmitSolutionDto } from './activityDto/SubmitSolution.dto';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService } from 'src/database/supabase.service';
+import { events } from 'src/utils/events';
 
 // ✨ DB 조회를 대체할 더미 퀘스트 데이터 생성 함수
 const createDummyQuestData = (questId: string) => {
@@ -57,7 +58,7 @@ export class ActivityService {
 
         // 방 전체에 선택된 문제 정보 브로드캐스트
         const payload = { questInfo: questDetails };
-        server.to(room.code).emit('problemSetSelected', payload);
+        server.to(room.code).emit(events.ACTIVITY_PROBLEM_SELECTED, payload);
 
         console.log(`[Service Activity] Manager selected quest ${data.questId} for room ${room.code}. Broadcasted to all.`);
 
@@ -139,7 +140,7 @@ export class ActivityService {
                 allParticipantsAssignments: assignments,
             };
 
-            server.to(targetParticipant.socketId).emit('activityBegin', payload);
+            server.to(targetParticipant.socketId).emit(events.ACTIVITY_BEGIN, payload);
         });
     console.log(`[Service Activity] Activity started in room ${room.code}.`);
     
@@ -183,7 +184,7 @@ export class ActivityService {
             partNumber: partNumber,
             message: `${userName} 님이 솔루션을 제출했습니다.`,
         };
-        server.to(room.code).emit('submitSolution', payload);
+        server.to(room.code).emit(events.ACTIVITY_SUBMITTED, payload);
         console.log(`[Service Activity] User ${userName} submitted solution for part ${partNumber} in room ${classroomId}.`);
         return { success: true, message: '성공적으로 제출되었습니다.' };
     }
@@ -203,7 +204,7 @@ export class ActivityService {
         const payload = {
             finalSubmissions: allSubmissions,
         };
-        server.to(room.code).emit('finalSubmissionsData', payload);
+        server.to(room.code).emit(events.ACTIVITY_FINAL_SUBMITTED, payload);
 
         console.log(`[Service Activity] Final submissions for room ${room.code} broadcasted by manager.`);
     
@@ -224,7 +225,7 @@ export class ActivityService {
             const payload = {
                 message: '방장에 의해 활동이 종료되었습니다.',
             };
-            server.to(room.code).emit('activityEnded', payload);
+            server.to(room.code).emit(events.ACTIVITY_ENDED, payload);
 
             console.log(`[Service Activity] Activity ended in room ${room.code} by manager.`);
             return { success: true, message: '활동이 종료되었습니다.' };
