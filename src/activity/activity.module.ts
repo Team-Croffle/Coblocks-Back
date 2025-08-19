@@ -7,10 +7,7 @@ import { ActivityStateService } from './activity-state.service';
 import { SupabaseModule } from 'src/database/supabase.module';
 
 @Module({
-  imports: [
-    ClassroomModule,
-    SupabaseModule
-  ],
+  imports: [ClassroomModule, SupabaseModule],
   providers: [ActivityGateway, ActivityService, ManagerGuard, ActivityStateService],
   exports: [ActivityService, ActivityStateService],
 })

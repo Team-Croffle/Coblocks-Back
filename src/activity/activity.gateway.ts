@@ -1,5 +1,11 @@
 import { UseFilters, UseGuards } from '@nestjs/common';
-import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  ConnectedSocket,
+  MessageBody,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
 import { WebsocketExceptionFilter } from 'src/websocket-exception/websocket-exception.filter';
 import { ActivityService } from './activity.service';
@@ -21,8 +27,7 @@ import { events } from 'src/utils/events';
 })
 @UseFilters(WebsocketExceptionFilter) // WebSocket 예외 필터 사용
 export class ActivityGateway {
-  constructor(private readonly activityService: ActivityService) {
-  }
+  constructor(private readonly activityService: ActivityService) {}
 
   @WebSocketServer()
   server: Server;
@@ -31,14 +36,17 @@ export class ActivityGateway {
 
   @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_SELECT_PROBLEM)
-  async handleProblemSetSelect(@ConnectedSocket() client: Socket , @MessageBody() data: SelectProblemDto) {
+  async handleProblemSetSelect(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: SelectProblemDto,
+  ) {
     return this.activityService.selectProblemSet(client, this.server, data);
   }
 
   @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_START)
   handleStart(@ConnectedSocket() client: Socket) {
-    return this.activityService.startActivity(client, this.server,);
+    return this.activityService.startActivity(client, this.server);
   }
 
   @UseGuards(ManagerGuard)
@@ -49,7 +57,7 @@ export class ActivityGateway {
 
   @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_END)
-  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string}) {
+  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string }) {
     return this.activityService.endActivity(client, this.server, data);
   }
 

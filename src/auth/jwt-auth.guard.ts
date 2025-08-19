@@ -18,7 +18,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
    * 인증이 실패했을 때(에러 발생 or 사용자 정보 없음) 처리할 내용 정의
    */
   handleRequest(err, user, info) {
-    if(err || !user) {
+    if (err || !user) {
       // WsException을 사용해 클라이언트에게 명확한 오류 메세지 전달
       throw err || new WsException(info?.message || '인증되지 않은 사용자입니다.');
     }
