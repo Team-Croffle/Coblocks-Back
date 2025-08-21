@@ -193,6 +193,19 @@ export class ActivityService {
       throw new WsException('해당 방을 찾을 수 없습니다.');
     }
 
+    // 빈자리 자동 제출 처리
+    const activity = this.activityStateService.getActivityState(room.id);
+    const participantCount = activity?.partAssignments.length || 0;
+
+    for (let partNumber = participantCount + 1; partNumber <= 4; partNumber++) {
+      this.activityStateService.updateUserSubmission(
+        room.id,
+        `auto-part${partNumber}`,
+        partNumber,
+        'CORRECT_ANSWER',
+      );
+    }
+
     // activityStateService로부터 모든 제출물 가져오기
     const allSubmissions = this.activityStateService.getAllSubmissions(room.id);
 
