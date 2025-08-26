@@ -15,6 +15,12 @@ export class ActivityStateService {
     this.initializeActivity(data.roomId);
   }
 
+  // 방 삭제시 문제풀이 활동 데이터도 완전 제거
+  @OnEvent('room.deleted')
+  handleRoomDeleted(data: { roomId: string }) {
+    this.removeActivity(data.roomId);
+  }
+
   // 특정 강의실에 대한 문제풀이 활동 세션을 초기화 함
   initializeActivity(classroomId: string) {
     if (!this.activities.has(classroomId)) {
@@ -26,6 +32,16 @@ export class ActivityStateService {
         submissions: {},
       });
     }
+  }
+
+  private removeActivity(classroomId: string): boolean {
+    const deleted = this.activities.delete(classroomId);
+    if (deleted) {
+      console.log(`[ActivityStateService] Activity removed for room ${classroomId}.`);
+    } else {
+      console.log(`[ActivityStateService] No activity found for room ${classroomId}.`);
+    }
+    return deleted;
   }
 
   // 선택된 문제를 활동 상태에 저장함

@@ -318,6 +318,9 @@ export class ClassroomService {
       this.roomCodeMap.delete(room.code);
       this.roomData.delete(classroomId);
 
+      // activity-state에 삭제 이벤트 발행
+      this.eventEmitter.emit('room.deleted', { roomId: classroomId });
+
       return true;
     } catch (error) {
       const errorMessage =
