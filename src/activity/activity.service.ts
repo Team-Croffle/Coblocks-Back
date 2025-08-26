@@ -8,6 +8,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService } from 'src/database/supabase.service';
 import { events } from 'src/utils/events';
 import { ActivityStateService } from './activity-state.service';
+import { QuestEntity, SupabaseRpcResponse } from 'src/types/quest.types';
+import { getSocketUser } from 'src/types/socket.types';
 
 @Injectable()
 export class ActivityService {
@@ -28,17 +30,20 @@ export class ActivityService {
       throw new WsException('해당 방을 찾을 수 없습니다.');
     }
 
-    const { data: questDetailsArray, error: rpcError } = await this.supabase.rpc(
+    const { data: questDetailsArray, error: rpcError } = (await this.supabase.rpc(
       'get_quest_for_solving',
       { p_quest_id: data.questId },
-    );
+    )) as SupabaseRpcResponse<QuestEntity>;
+
     if (rpcError) {
       console.error(`[Activity Service] Supabase RPC error:`, rpcError.message);
       throw new WsException('문제를 불러오는 중 오류가 발생했습니다.');
     }
+
     if (!questDetailsArray || questDetailsArray.length === 0) {
       throw new WsException('해당 ID의 문제를 찾을 수 없습니다.');
     }
+
     const questDetails = questDetailsArray[0];
     // activityStateService 통해 방의 활동 상태 업데이트
     this.activityStateService.setSelectedQuest(room.id, questDetails);
@@ -57,27 +62,7 @@ export class ActivityService {
 
   // 활동 시작
   startActivity(client: Socket, server: Server) {
-    // socketId로 방 정보 가져오기
-    const classroomId = this.classroomService.getRoomIdBySocketId(client.id);
-    if (!classroomId) {
-      throw new WsException('참여중인 강의실이 없습니다.');
-    }
-    const room = this.classroomService.getRoomById(classroomId);
-    if (!room) {
-      throw new WsException('강의실 정보를 찾을 수 없습니다.');
-    }
-    const activity = this.activityStateService.getActivityState(room.id);
-    if (!activity) {
-      throw new WsException('활동 정보를 찾을 수 없습니다.');
-    }
-
-    // 상태 확인 (권한은 ManagerGuard에서 처리됨)
-    if (!activity.currentQuest) {
-      throw new WsException('활동을 시작할 문제 세트가 선택되지 않았습니다.');
-    }
-    if (activity.status !== 'waiting') {
-      throw new WsException('활동을 시작할 수 있는 상태가 아닙니다 (이미 시작되었거나 종료됨).');
-    }
+    const { room, activity } = this._getRoomAndActivity(client.id);
 
     // 참여자들에게 파트 번호 배정
     const participants = Array.from(room.participants.values());
@@ -99,18 +84,42 @@ export class ActivityService {
       const targetParticipant = participants.find((p) => p.userId === assignment.userId);
       if (!targetParticipant) return;
 
-      const questDetails = activity.currentQuest;
+      // ✅ 1. 명시적 타입 단언
+      const questDetails = activity.currentQuest as QuestEntity;
+      if (!questDetails) {
+        console.error(`[Activity Service] currentQuest is null for room ${room.id}`);
+        return;
+      }
 
       let userQuestContent = {};
       let userQuestQuestion = '문제 설명을 불러올 수 없습니다.';
 
-      if (questDetails.quest_context.is_equal) {
-        userQuestContent = questDetails.quest_context.player1; // 동일한 블록 사용
-        userQuestQuestion = questDetails.quest_question; // 동일한 질문 사용
+      // ✅ 2. context도 타입 단언
+      const context = questDetails.quest_context;
+
+      if (context.is_equal === true) {
+        // ✅ 3. 안전한 접근 - player1이 있으면 사용, 없으면 빈 객체
+        userQuestContent = context.player1?.blocks || {};
+
+        if (typeof questDetails.quest_question === 'string') {
+          userQuestQuestion = questDetails.quest_question;
+        }
       } else {
-        const playerKey = `player${assignment.partNumber}`;
-        userQuestContent = questDetails.quest_context[playerKey];
-        userQuestQuestion = questDetails.quest_question[playerKey];
+        // ✅ 4. 동적 속성 접근을 안전하게
+        const playerKey = `player${assignment.partNumber}` as
+          | 'player1'
+          | 'player2'
+          | 'player3'
+          | 'player4';
+        userQuestContent = context[playerKey]?.blocks || {};
+
+        if (
+          typeof questDetails.quest_question === 'object' &&
+          questDetails.quest_question !== null
+        ) {
+          const questionObj = questDetails.quest_question as Record<string, string>;
+          userQuestQuestion = questionObj[playerKey] || '문제 설명을 불러올 수 없습니다.';
+        }
       }
 
       const payload = {
@@ -152,7 +161,7 @@ export class ActivityService {
       throw new WsException('활동이 진행 중이 아닙니다. 솔루션을 제출할 수 없습니다.');
     }
 
-    const user = (client as any).user;
+    const user = getSocketUser(client);
     const userId = user.userId; // 클라이언트의 userId를 가져옵니다.
     const userName = user.userName; // 클라이언트의 userName을 가져옵니다.
 
@@ -186,7 +195,7 @@ export class ActivityService {
   }
 
   // 최종 제출 요청
-  requestFinalSubmission(client: Socket, server: Server, data: any) {
+  requestFinalSubmission(client: Socket, server: Server, data: { code: string }) {
     // 방 정보 조회
     const room = this.classroomService.findRoomByCode(data.code);
     if (!room) {
@@ -249,5 +258,17 @@ export class ActivityService {
     }
   }
 
-  // 기타 필요한 메소드들...
+  // 헬퍼 메소드
+  private _getRoomAndActivity(socketId: string) {
+    const classroomId = this.classroomService.getRoomIdBySocketId(socketId);
+    if (!classroomId) throw new WsException('참여중인 강의실이 없습니다.');
+
+    const room = this.classroomService.getRoomById(classroomId);
+    if (!room) throw new WsException('강의실 정보를 찾을 수 없습니다.');
+
+    const activity = this.activityStateService.getActivityState(room.id);
+    if (!activity) throw new WsException('활동 정보를 찾을 수 없습니다.');
+
+    return { room, activity };
+  }
 }

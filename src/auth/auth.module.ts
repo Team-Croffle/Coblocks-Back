@@ -10,7 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('SUPABASE_JWT_SECRET')!, // JWT 토큰을 서명할 비밀 키 (JwtStrategy와 동일해야 함)
         signOptions: { expiresIn: '2h' }, // JWT 토큰의 유효 기간 설정
       }),

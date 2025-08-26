@@ -192,7 +192,9 @@ export class ClassroomService {
       console.log(
         `[ClassroomService] Room ${classroomId} is now empty. Deleting room immediately.`,
       );
-      this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
+      this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+        console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
+      });
       roomTerminated = true;
     }
     return { room, leftUser, wasManager, roomTerminated };
@@ -208,7 +210,9 @@ export class ClassroomService {
 
     // 나가는 사람이 개설자인 경우: 즉시 방 종료
     if (room.managerId === userId) {
-      this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
+      this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+        console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
+      });
       return { success: true, message: '방이 삭제되었습니다!' };
     } else {
       // 일반 참가자인 경우
@@ -218,7 +222,9 @@ export class ClassroomService {
 
       if (room.participants.size === 0) {
         // 마지막 참여자가 명시적으로 나간 경우에도 방 종료
-        this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
+        this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+          console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
+        });
         return {
           success: true,
           message: '마지막 참여자가 나가 방이 삭제되었습니다.',
@@ -247,14 +253,21 @@ export class ClassroomService {
     console.log(
       `[ClassroomService] Starting ${MANAGER_RECONNECT_TIMEOUT / 1000}s grace period for manager ${managerId} in room ${classroomId}.`,
     );
-    const timerId = setTimeout(async () => {
+    const timerId = setTimeout(() => {
       const room = this.roomData.get(classroomId);
       // 유예 기간 만료 시, 여전히 개설자가 재접속하지 않았는지 최종 확인
       if (room && this.isGracePeriodActive(classroomId)) {
         console.log(
           `[ClassroomService] Grace period expired for room ${classroomId}. Terminating.`,
         );
-        await this.terminateRoomImmediately(classroomId, server, this.userRoomMap);
+        // Promise를 명시적으로 처리
+        this.terminateRoomImmediately(classroomId, server, this.userRoomMap)
+          .then(() => {
+            console.log(`[ClassroomService] Room ${classroomId} terminated after grace period.`);
+          })
+          .catch((error) => {
+            console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
+          });
       }
       this.roomRecoveryTimers.delete(classroomId);
     }, MANAGER_RECONNECT_TIMEOUT);
@@ -294,9 +307,9 @@ export class ClassroomService {
         message: `강의실이 종료되었습니다.`,
       });
 
-      // 방에 있는 모든 소켓 연결 강제 해제
+      // 방에 있는 모든 소켓 연결 강제 해제 =(수정)> 메모리만 해제, 효율적인 소켓 연결 관리를 위함
       const socketsInRoom = await server.in(room.code).fetchSockets();
-      socketsInRoom.forEach((sock) => sock.disconnect(true));
+      socketsInRoom.forEach((sock) => sock.leave(room.code)); // 방에서만 제거(소켓 연결해제 x)
 
       // 메모리 정리
       for (const socketId of room.participants.keys()) {
@@ -307,7 +320,11 @@ export class ClassroomService {
 
       return true;
     } catch (error) {
-      console.error(`[ClassroomService] DB delete error for ${room.id}: ${error.message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error) || '알 수 없는 오류가 발생했습니다.';
+
+      console.error(`[ClassroomService] DB delete error for ${room.id}: ${errorMessage}`);
+
       if (room.managerSocketId) {
         server.to(room.managerSocketId).emit('error', {
           message: '강의실을 종료하는 데 실패했습니다. 잠시 후 다시 시도해주세요.',

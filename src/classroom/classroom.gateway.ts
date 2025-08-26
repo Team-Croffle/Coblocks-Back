@@ -14,6 +14,7 @@ import { UseFilters, UseGuards } from '@nestjs/common';
 import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { events } from 'src/utils/events';
+import { getSocketUser } from 'src/types/socket.types';
 
 @UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
 @WebSocketGateway({
@@ -66,7 +67,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // 소켓 연결에 성공한 사용자가 방을 개설할 때 호출되는 메서드
   @SubscribeMessage(events.CLASSROOM_CREATE)
-  handleCreateRoom(@MessageBody() data: CreateClassroomDto, @ConnectedSocket() client: Socket) {
+  async handleCreateRoom(
+    @MessageBody() data: CreateClassroomDto,
+    @ConnectedSocket() client: Socket,
+  ) {
     console.log(
       `[ClassroomGateway] Create room request from user ${data.managerId} with code ${data.code}.`,
     );
@@ -84,7 +88,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     // client.data.userId = data.managerId; // 소켓에 사용자 ID 저장
     // client.data.userName = data.managerName; // 소켓에 사용자 이름 저장
 
-    client.join(newRoom.code); // 방에 참가
+    await client.join(newRoom.code); // 방에 참가
 
     return {
       success: true,
@@ -97,7 +101,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage(events.CLASSROOM_JOIN)
-  handleJoinRoom(@MessageBody() data: JoinClassroomDto, @ConnectedSocket() client: Socket) {
+  async handleJoinRoom(@MessageBody() data: JoinClassroomDto, @ConnectedSocket() client: Socket) {
     const room = this.classroomService.joinRoom(
       data.code,
       data.userId,
@@ -110,7 +114,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     // client.data.userId = data.userId; // 소켓에 사용자 ID 저장
     // client.data.userName = data.userName; // 소켓에 사용자 이름 저장
 
-    client.join(room.code); // 방에 참가
+    await client.join(room.code); // 방에 참가
 
     const participants = Array.from(room.participants.values());
 
@@ -134,7 +138,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   // 방 나가기 요청 처리(명시적 퇴장 요청)
   @SubscribeMessage(events.CLASSROOM_LEAVE)
   handleLeaveRoom(@MessageBody() data: { code: string }, @ConnectedSocket() client: Socket) {
-    const user = (client as any).user; // JWT 인증을 통해 사용자 정보 가져오기 (테스트 필요 작성 기준 - 8/4)
+    const user = getSocketUser(client); // JWT 인증을 통해 사용자 정보 가져오기 (테스트 필요 작성 기준 - 8/4)
     console.log(`[ClassroomGateway] leaveRoom request from ${user.userId} for room ${data.code}`);
 
     const result = this.classroomService.leaveRoom(data.code, user.userId, client.id, this.server);

@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
-import { Socket } from 'socket.io';
 import { ClassroomService } from 'src/classroom/classroom.service';
+import { getSocketUser, TypedSocket } from 'src/types/socket.types';
 
 @Injectable()
 export class ManagerGuard implements CanActivate {
@@ -12,10 +12,10 @@ export class ManagerGuard implements CanActivate {
     console.log('[ManagerGuard] 방장 권한 체크 시작'); // for test
 
     // 현재 요청에 대한 소켓(client)객체 가져오기
-    const client: Socket = context.switchToWs().getClient<Socket>();
+    const client: TypedSocket = context.switchToWs().getClient<TypedSocket>();
 
     // 소켓에 저장된 사용자 정보 가져오기
-    const user = (client as any).user;
+    const user = getSocketUser(client);
 
     if (!user || !user.userId) {
       console.log('[ManagerGuard] 사용자 정보가 없습니다 (Not Authenticated).');
@@ -41,7 +41,7 @@ export class ManagerGuard implements CanActivate {
       console.log('[ManagerGuard] 방장 권한이 없습니다 (Not Room Manager).');
       throw new WsException('개설자만 사용할 수 있는 기능입니다.');
     }
-    (client as any).room = room; // 소켓에 방 정보 저장
+    client.room = room; // 소켓에 방 정보 저장
     return true; // 권한이 있는 경우 true 반환
   }
 }

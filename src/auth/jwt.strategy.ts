@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { Socket } from 'socket.io';
+import { TypedSocket } from 'src/types/socket.types';
+
+interface JwtPayload {
+  // JWT payload 타입
+  sub: string; // 사용자 ID
+  user_metadata: {
+    nickname: string; // 사용자 닉네임
+  };
+}
 
 // 클라이언트는 소켓 서버에 접속할 때 아래와 같이 auth 정보를 포함시켜야 함
 /*
@@ -14,8 +22,9 @@ import { Socket } from 'socket.io';
 */
 
 // 소켓 연결 요청의 handshake 부분에서 토큰을 추출하는 함수
-const fromSocketAuth = (client: Socket): string | null => {
-  return client.handshake.auth?.token;
+// socket.io의 타입 정의에 따라 token 타입이
+const fromSocketAuth = (client: TypedSocket): string | null => {
+  return client.handshake.auth.token || null;
 };
 
 @Injectable()
@@ -39,7 +48,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * 해당 메서드에서 반환된 값은 소켓 객체의 user 속성에 저장됨
    * @param payload - JWT 토큰에 담겨있는 정보
    */
-  async validate(payload: any) {
+  validate(payload: JwtPayload) {
     // Supabase JWT의 payload에서 필요한 사용자 정보를 추출하여 반환
     return {
       userId: payload.sub, // 'sub'는 Supabase에서 사용자 ID를 나타냄

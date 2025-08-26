@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Activity } from './activity.interface';
 import { WsException } from '@nestjs/websockets';
 import { OnEvent } from '@nestjs/event-emitter';
+import { QuestEntity } from 'src/types/quest.types';
 
 @Injectable()
 export class ActivityStateService {
@@ -28,7 +29,7 @@ export class ActivityStateService {
   }
 
   // 선택된 문제를 활동 상태에 저장함
-  setSelectedQuest(classroomId: string, questDetails: any) {
+  setSelectedQuest(classroomId: string, questDetails: QuestEntity) {
     const activity = this.activities.get(classroomId);
     if (activity) {
       activity.currentQuest = questDetails;
@@ -44,7 +45,10 @@ export class ActivityStateService {
   }
 
   // 활동을 'active' 상태로 변경하고, 파트 배정 정보를 저장함
-  startActivity(classroomId: string, assignments: any[]): Activity | null {
+  startActivity(
+    classroomId: string,
+    assignments: { userId: string; userName: string; partNumber: number }[],
+  ): Activity | null {
     const activity = this.activities.get(classroomId);
     if (activity && activity.status === 'waiting') {
       activity.status = 'active'; // 'waiting' -> 'active'
@@ -62,15 +66,13 @@ export class ActivityStateService {
     classroomId: string,
     userId: string,
     partNumber: number,
-    submissionContent: any,
+    submissionContent: unknown,
   ): Activity | null {
     const activity = this.activities.get(classroomId);
     if (activity && activity.status === 'active') {
       // 활동이 'active' 상태일 때만 제출 가능
       // 제출물 업데이트
-      if (!activity.submissions[userId]) {
-        activity.submissions = {};
-      }
+
       activity.submissions[userId] = {
         partNumber: partNumber,
         content: submissionContent,

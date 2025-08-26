@@ -1,9 +1,11 @@
+import { QuestEntity } from 'src/types/quest.types';
+
 export interface Activity {
   classroomId: string; // 강의실 ID
 
   status: 'waiting' | 'active'; // 활동 상태 (대기중, 진행중)
 
-  currentQuest: any | null;
+  currentQuest: QuestEntity | null;
 
   // 각 참여자에게 할당된 파트 번호 정보
   partAssignments: {
