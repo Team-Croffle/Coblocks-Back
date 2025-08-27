@@ -52,7 +52,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Supabase JWT의 payload에서 필요한 사용자 정보를 추출하여 반환
     return {
       userId: payload.sub, // 'sub'는 Supabase에서 사용자 ID를 나타냄
-      userName: payload.user_metadata?.nickname, // 사용자 메타데이터에서 username 추출
+      userName: payload.user_metadata?.nickname, // 사용자 메타데이터에서 nickname(username) 추출
     };
   }
 }
