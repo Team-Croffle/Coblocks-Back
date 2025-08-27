@@ -1,6 +1,12 @@
-import { ConnectedSocket, SubscribeMessage, MessageBody ,WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  ConnectedSocket,
+  SubscribeMessage,
+  MessageBody,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import {WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
+import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import { ClassroomService } from 'src/classroom/classroom.service';
@@ -21,10 +27,9 @@ export class ChatGateway {
   @WebSocketServer()
   server: Server;
 
-
   @SubscribeMessage(events.CHAT_SEND_MESSAGE)
   handleMessage(@MessageBody() messageData: SendMessageDto, @ConnectedSocket() client: Socket) {
-    // 
+    //
     const room = this.classroomService.findRoomByCode(messageData.code);
     if (!room) {
       throw new WsException('존재하지 않는 방입니다.');
@@ -37,7 +42,7 @@ export class ChatGateway {
       userName: messageData.userName,
       message: messageData.message,
       timestamp: new Date().toLocaleString(), // 현지 시간(날짜+시간)
-    }
+    };
 
     this.server.to(messageData.code).emit(events.CHAT_MESSAGE, message);
     return { success: true, message: 'Message sent successfully' };

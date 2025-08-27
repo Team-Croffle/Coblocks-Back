@@ -1,6 +1,6 @@
-import { IsObject } from "class-validator";
+import { IsObject } from 'class-validator';
 
 export class SubmitSolutionDto {
-    @IsObject()
-    submissionContent: any; // Blockly 데이터
+  @IsObject()
+  submissionContent: any; // Blockly 데이터
 }
