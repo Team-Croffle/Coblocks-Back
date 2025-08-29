@@ -70,7 +70,10 @@ export class ClassroomService {
 
   // 초대 코드로 방 존재 여부 확인
   findRoomByCode(code: string): Classroom | undefined {
+    console.log('🔍 [ClassroomService] 찾으려는 코드:', code);
+    console.log('🔍 [ClassroomService] 전체 방 목록:', Array.from(this.roomCodeMap.keys()));
     const classroomId = this.roomCodeMap.get(code); // 방 코드로 방 ID 찾기
+    console.log(`[ClassroomService] Finding room by code: ${code} -> ${classroomId}`);
     return classroomId ? this.roomData.get(classroomId) : undefined; // 방 ID로 방 정보 찾기
   }
 
