@@ -201,7 +201,7 @@ export class ClassroomService {
   }
 
   // 방 퇴장
-  leaveRoom(roomCode: string, userId: string, socketId: string, server: Server) {
+  async leaveRoom(roomCode: string, userId: string, socketId: string, server: Server) {
     const classroomId = this.roomCodeMap.get(roomCode);
     if (!classroomId) throw new WsException('존재하지 않는 방입니다.'); // 방 코드가 존재하지 않으면 에러
 
@@ -210,7 +210,7 @@ export class ClassroomService {
 
     // 나가는 사람이 개설자인 경우: 즉시 방 종료
     if (room.managerId === userId) {
-      this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+      await this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
         console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
       });
       return { success: true, message: '방이 삭제되었습니다!' };
