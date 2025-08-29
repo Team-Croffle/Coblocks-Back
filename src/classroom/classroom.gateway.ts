@@ -10,13 +10,11 @@ import { OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { ClassroomService } from './classroom.service';
 import { CreateClassroomDto } from './classroomDto/create-classroom.dto';
 import { JoinClassroomDto } from './classroomDto/join-classroom.dto';
-import { UseFilters, UseGuards } from '@nestjs/common';
+import { UseFilters } from '@nestjs/common';
 import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { events } from 'src/utils/events';
 import { getSocketUser } from 'src/types/socket.types';
 
-@UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
 @WebSocketGateway({
   cors: {
     origin: '*',
