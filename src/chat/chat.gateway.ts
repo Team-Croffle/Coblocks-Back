@@ -7,12 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WebsocketExceptionFilter } from '../websocket-exception/websocket-exception.filter';
-import { UseFilters } from '@nestjs/common';
+import { UseFilters, UseGuards } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import { ClassroomService } from 'src/classroom/classroom.service';
 import { SendMessageDto } from './chatDto/sendMessage.dto';
 import { events } from 'src/utils/events';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @WebSocketGateway({
   cors: {
     origin: '*',

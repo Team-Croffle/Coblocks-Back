@@ -1,4 +1,4 @@
-import { UseFilters } from '@nestjs/common';
+import { UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -12,11 +12,14 @@ import { ActivityService } from './activity.service';
 import { SelectProblemDto } from './activityDto/SelectProblem.dto';
 import { SubmitSolutionDto } from './activityDto/SubmitSolution.dto';
 import { events } from 'src/utils/events';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { ManagerGuard } from 'src/auth/manager/manager.guard';
 /**
  * UseGuards(JwtAuthGuard) - JWT 인증 가드 사용중
  * UseGuards(ManagerGuard) - 방장 권한 확인 가드 사용중
  */
 
+@UseGuards(JwtAuthGuard)
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -30,7 +33,7 @@ export class ActivityGateway {
   server: Server;
 
   // 방장 권한이 필요한 이벤트 핸들러
-
+  @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_SELECT_PROBLEM)
   async handleProblemSetSelect(
     @ConnectedSocket() client: Socket,
@@ -39,16 +42,19 @@ export class ActivityGateway {
     return this.activityService.selectProblemSet(client, this.server, data);
   }
 
+  @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_START)
   handleStart(@ConnectedSocket() client: Socket) {
     return this.activityService.startActivity(client, this.server);
   }
 
+  @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_FINAL_SUBMIT)
   handleFinalSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
     return this.activityService.requestFinalSubmission(client, this.server, data);
   }
 
+  @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_END)
   handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string }) {
     return this.activityService.endActivity(client, this.server, data);
