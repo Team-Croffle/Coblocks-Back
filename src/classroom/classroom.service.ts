@@ -201,7 +201,7 @@ export class ClassroomService {
   }
 
   // 방 퇴장
-  leaveRoom(roomCode: string, userId: string, socketId: string, server: Server) {
+  async leaveRoom(roomCode: string, userId: string, socketId: string, server: Server) {
     const classroomId = this.roomCodeMap.get(roomCode);
     if (!classroomId) throw new WsException('존재하지 않는 방입니다.'); // 방 코드가 존재하지 않으면 에러
 
@@ -210,7 +210,7 @@ export class ClassroomService {
 
     // 나가는 사람이 개설자인 경우: 즉시 방 종료
     if (room.managerId === userId) {
-      this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+      await this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
         console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
       });
       return { success: true, message: '방이 삭제되었습니다!' };
@@ -282,16 +282,44 @@ export class ClassroomService {
   ) {
     const room = this.roomData.get(classroomId);
     if (!room) return false;
+
     console.log(`[ClassroomService] Terminating room ${classroomId} immediately.`);
 
+    // 1. 유예 기간 타이머 정리
     if (this.roomRecoveryTimers.has(classroomId)) {
-      // 유예 기간 타이머가 설정되어 있다면
-      clearTimeout(this.roomRecoveryTimers.get(classroomId)); // 타이머를 정리
-      this.roomRecoveryTimers.delete(classroomId); // 타이머 삭제
+      clearTimeout(this.roomRecoveryTimers.get(classroomId));
+      this.roomRecoveryTimers.delete(classroomId);
     }
 
+    // 2. 클라이언트에 즉시 알림
+    server.to(room.code).emit(events.CLASSROOM_DELETED, {
+      classroomId: room.id,
+      message: `강의실이 종료되었습니다.`,
+    });
+
+    // 3. 소켓에서 방 제거
+    const socketsInRoom = await server.in(room.code).fetchSockets();
+    socketsInRoom.forEach((sock) => sock.leave(room.code));
+
+    // 4. 메모리 정리
+    for (const socketId of room.participants.keys()) {
+      userRoomMap.delete(socketId);
+    }
+    this.roomCodeMap.delete(room.code);
+    this.roomData.delete(classroomId);
+
+    // 5. 이벤트 발행
+    this.eventEmitter.emit('room.deleted', { roomId: classroomId });
+
+    // 6. DB 삭제는 백그라운드에서 처리 (실패해도 서비스 지속)
+    void this.deleteRoomFromDBAsync(classroomId, room.id);
+
+    return true;
+  }
+
+  // DB 삭제 전용 메서드
+  private async deleteRoomFromDBAsync(classroomId: string, roomId: string) {
     try {
-      // Supabase에서 방 정보 삭제
       const { error: rpcError } = await this.supabase.rpc('handle_delete_classroom', {
         target_classroom_id: classroomId,
       });
@@ -299,41 +327,10 @@ export class ClassroomService {
       if (rpcError) {
         throw rpcError;
       }
-      console.log(`[ClassroomService] Classroom ${room.id} deleted from DB Successfully.`);
-
-      // DB 삭제가 성공했을 때만 메모리에서 방 정보 삭제
-      server.to(room.code).emit(events.CLASSROOM_DELETED, {
-        classroomId: room.id,
-        message: `강의실이 종료되었습니다.`,
-      });
-
-      // 방에 있는 모든 소켓 연결 강제 해제 =(수정)> 메모리만 해제, 효율적인 소켓 연결 관리를 위함
-      const socketsInRoom = await server.in(room.code).fetchSockets();
-      socketsInRoom.forEach((sock) => sock.leave(room.code)); // 방에서만 제거(소켓 연결해제 x)
-
-      // 메모리 정리
-      for (const socketId of room.participants.keys()) {
-        userRoomMap.delete(socketId);
-      }
-      this.roomCodeMap.delete(room.code);
-      this.roomData.delete(classroomId);
-
-      // activity-state에 삭제 이벤트 발행
-      this.eventEmitter.emit('room.deleted', { roomId: classroomId });
-
-      return true;
+      console.log(`[ClassroomService] Classroom ${roomId} deleted from DB successfully.`);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error) || '알 수 없는 오류가 발생했습니다.';
-
-      console.error(`[ClassroomService] DB delete error for ${room.id}: ${errorMessage}`);
-
-      if (room.managerSocketId) {
-        server.to(room.managerSocketId).emit('error', {
-          message: '강의실을 종료하는 데 실패했습니다. 잠시 후 다시 시도해주세요.',
-        });
-      }
-      return false;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[ClassroomService] DB delete error for ${roomId}: ${errorMessage}`);
     }
   }
 

@@ -32,7 +32,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // 클라이언트가 접속할 때 호출되는 메서드
   handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`); // 테스트를 위한 로그 출력
+    console.log(`Client connected: ${client.id}`);
   }
 
   // 클라이언트의 연결이 끊어질 때 호출되는 메서드
@@ -84,10 +84,6 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       data.managerName,
     ); // 방 생성
 
-    // // 테스트용 설정 -> JWT토큰으로 교체 예정 (중단)
-    // client.data.userId = data.managerId; // 소켓에 사용자 ID 저장
-    // client.data.userName = data.managerName; // 소켓에 사용자 이름 저장
-
     await client.join(newRoom.code); // 방에 참가
 
     return {
@@ -107,12 +103,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       data.userId,
       data.userName,
       client.id,
-      this.server, // 이전 소켓 강제 종료를 위해 서버 인스턴스를 전달(중복 방 참가 방지)
+      this.server,
     ); // 방 참가
-
-    // 테스트용 설정 -> JWT토큰으로 교체 예정 (중단)
-    // client.data.userId = data.userId; // 소켓에 사용자 ID 저장
-    // client.data.userName = data.userName; // 소켓에 사용자 이름 저장
 
     await client.join(room.code); // 방에 참가
 
@@ -137,11 +129,16 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // 방 나가기 요청 처리(명시적 퇴장 요청)
   @SubscribeMessage(events.CLASSROOM_LEAVE)
-  handleLeaveRoom(@MessageBody() data: { code: string }, @ConnectedSocket() client: Socket) {
-    const user = getSocketUser(client); // JWT 인증을 통해 사용자 정보 가져오기 (테스트 필요 작성 기준 - 8/4)
+  async handleLeaveRoom(@MessageBody() data: { code: string }, @ConnectedSocket() client: Socket) {
+    const user = getSocketUser(client); // JWT 인증을 통해 사용자 정보 가져오기
     console.log(`[ClassroomGateway] leaveRoom request from ${user.userId} for room ${data.code}`);
 
-    const result = this.classroomService.leaveRoom(data.code, user.userId, client.id, this.server);
+    const result = await this.classroomService.leaveRoom(
+      data.code,
+      user.userId,
+      client.id,
+      this.server,
+    );
 
     if (result.success) {
       // 방이 종료된 경우 추가 이벤트 불필요 (leaveRoom 내부의 terminateRoomImmediately 호출로 처리됨)
