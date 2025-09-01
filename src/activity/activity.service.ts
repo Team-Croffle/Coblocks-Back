@@ -22,6 +22,8 @@ export class ActivityService {
     this.supabase = this.supabaseService.getClient(); // supabase 클라이언트 초기화
   }
 
+  private readonly MAX_PARTICIPANT = 4;
+
   // 문제 세트 선택
   async selectProblemSet(client: Socket, server: Server, data: SelectProblemDto) {
     const room = this.classroomService.findRoomByCode(data.code);
@@ -218,7 +220,7 @@ export class ActivityService {
     }
 
     // 빈자리 자동 제출 처리
-    for (let partNumber = participantCount + 1; partNumber <= 4; partNumber++) {
+    for (let partNumber = participantCount + 1; partNumber <= this.MAX_PARTICIPANT; partNumber++) {
       this.activityStateService.updateUserSubmission(
         room.id,
         `auto-part${partNumber}`,
