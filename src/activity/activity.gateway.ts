@@ -1,5 +1,11 @@
 import { UseFilters, UseGuards } from '@nestjs/common';
-import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  ConnectedSocket,
+  MessageBody,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
 import { WebsocketExceptionFilter } from 'src/websocket-exception/websocket-exception.filter';
 import { ActivityService } from './activity.service';
@@ -8,8 +14,12 @@ import { SelectProblemDto } from './activityDto/SelectProblem.dto';
 import { SubmitSolutionDto } from './activityDto/SubmitSolution.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { events } from 'src/utils/events';
+/**
+ * UseGuards(JwtAuthGuard) - JWT 인증 가드 사용중
+ * UseGuards(ManagerGuard) - 방장 권한 확인 가드 사용중
+ */
 
-@UseGuards(JwtAuthGuard) // JWT 인증 가드 사용
+@UseGuards(JwtAuthGuard)
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -24,33 +34,36 @@ export class ActivityGateway {
 
   // 방장 권한이 필요한 이벤트 핸들러
 
-  @UseGuards(ManagerGuard) // 방장 권한 확인 가드 사용
-  @SubscribeMessage(events.ACTIVITY_SELECT_PROBLEM) // 이벤트 이름 변경
-  async handleProblemSetSelect(@ConnectedSocket() client: Socket , @MessageBody() data: SelectProblemDto) {
+  @UseGuards(ManagerGuard)
+  @SubscribeMessage(events.ACTIVITY_SELECT_PROBLEM)
+  async handleProblemSetSelect(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: SelectProblemDto,
+  ) {
     return this.activityService.selectProblemSet(client, this.server, data);
   }
 
-  @UseGuards(ManagerGuard) // 방장 권한 확인 가드 사용
-  @SubscribeMessage(events.ACTIVITY_START) // 이벤트 이름 변경
+  @UseGuards(ManagerGuard)
+  @SubscribeMessage(events.ACTIVITY_START)
   handleStart(@ConnectedSocket() client: Socket) {
-    return this.activityService.startActivity(client, this.server,);
+    return this.activityService.startActivity(client, this.server);
   }
 
-  @UseGuards(ManagerGuard) // 방장 권한 확인 가드 사용
-  @SubscribeMessage(events.ACTIVITY_FINAL_SUBMIT) // 이벤트 이름 변경
-  handleFinalSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
+  @UseGuards(ManagerGuard)
+  @SubscribeMessage(events.ACTIVITY_FINAL_SUBMIT)
+  handleFinalSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string }) {
     return this.activityService.requestFinalSubmission(client, this.server, data);
   }
 
-  @UseGuards(ManagerGuard) // 방장 권한 확인 가드 사용
-  @SubscribeMessage(events.ACTIVITY_END) // 이벤트 이름 변경
-  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string}) {
+  @UseGuards(ManagerGuard)
+  @SubscribeMessage(events.ACTIVITY_END)
+  handleEnd(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string }) {
     return this.activityService.endActivity(client, this.server, data);
   }
 
   // 공용 핸들러
 
-  @SubscribeMessage(events.ACTIVITY_SUBMIT_SOLUTION) // 이벤트 이름 변경
+  @SubscribeMessage(events.ACTIVITY_SUBMIT_SOLUTION)
   handleSolutionSubmit(@MessageBody() data: SubmitSolutionDto, @ConnectedSocket() client: Socket) {
     return this.activityService.submitSolution(client, this.server, data);
   }
