@@ -90,7 +90,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       success: true,
       message: '방이 성공적으로 개설되었습니다!',
       classroom: { name: newRoom.name, code: newRoom.code }, // 클라이언트 UI 업데이트를 위한 방 정보
-      users: Array.from(newRoom.participants.values()).map((p) => ({ userName: p.userName })), // 참가자 목록
+      users: Array.from(newRoom.participants.values()).map((p) => ({
+        userName: p.userName,
+        isManager: p.isManager,
+      })), // 참가자 목록
       isManager: true, // 개설자 권한 여부
       state: newRoom.state, // 방 상태
     }; // 방 개설 성공 응답
@@ -112,7 +115,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     client.to(room.code).emit(events.CLASSROOM_USER_JOINED, {
       joinUser: data.userName,
-      users: participants.map((p) => ({ userName: p.userName })),
+      users: participants.map((p) => ({ userName: p.userName, isManager: p.isManager })),
       userCount: participants.length,
     });
 
@@ -133,39 +136,24 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     const user = getSocketUser(client); // JWT 인증을 통해 사용자 정보 가져오기
     console.log(`[ClassroomGateway] leaveRoom request from ${user.userId} for room ${data.code}`);
 
-    const result = await this.classroomService.leaveRoom(
-      data.code,
-      user.userId,
-      client.id,
-      this.server,
-    );
-
-    if (result.success) {
-      // 방이 종료된 경우 추가 이벤트 불필요 (leaveRoom 내부의 terminateRoomImmediately 호출로 처리됨)
-      console.log(
-        `[ClassroomGateway] Room ${data.code} terminated by explicit leave of user ${user.userId}.`,
+    try {
+      const result = await this.classroomService.leaveRoom(
+        data.code,
+        user.userId,
+        client.id,
+        this.server,
       );
-    } else {
-      // 일반 참가자 퇴장
-      const remainingParticipants = result.participants;
-      if (!remainingParticipants) {
-        console.error(
-          `[ClassroomGateway] No remaining participants found after leaving room ${data.code}.`,
-        );
-        return { success: false, message: '방에 참가자가 없습니다.' };
-      }
 
-      client.to(data.code).emit(events.CLASSROOM_USER_LEFT, {
-        leftUser: user.userName,
-        users: remainingParticipants.map((p) => ({ userName: p.userName })),
-        userCount: remainingParticipants.length,
-        isManagerLeftTemporarily: false,
-      });
+      return {
+        success: true,
+        message: result.message,
+      };
+    } catch (error) {
+      console.error(`[ClassroomGateway] Leave room error:`, error);
+      return {
+        success: false,
+        message: '방 나가기에 실패했습니다.',
+      };
     }
-
-    return {
-      success: true,
-      message: '방을 성공적으로 나갔습니다!',
-    };
   }
 }
