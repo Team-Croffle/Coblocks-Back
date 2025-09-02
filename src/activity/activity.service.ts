@@ -22,6 +22,8 @@ export class ActivityService {
     this.supabase = this.supabaseService.getClient(); // supabase 클라이언트 초기화
   }
 
+  private readonly MAX_PARTICIPANT = 4;
+
   // 문제 세트 선택
   async selectProblemSet(client: Socket, server: Server, data: SelectProblemDto) {
     const room = this.classroomService.findRoomByCode(data.code);
@@ -84,7 +86,7 @@ export class ActivityService {
       const targetParticipant = participants.find((p) => p.userId === assignment.userId);
       if (!targetParticipant) return;
 
-      // ✅ 1. 명시적 타입 단언
+      // 1. 명시적 타입 단언
       const questDetails = activity.currentQuest as QuestEntity;
       if (!questDetails) {
         console.error(`[Activity Service] currentQuest is null for room ${room.id}`);
@@ -94,18 +96,18 @@ export class ActivityService {
       let userQuestContent = {};
       let userQuestQuestion = '문제 설명을 불러올 수 없습니다.';
 
-      // ✅ 2. context도 타입 단언
+      // 2. context도 타입 단언
       const context = questDetails.quest_context;
 
       if (context.is_equal === true) {
-        // ✅ 3. 안전한 접근 - player1이 있으면 사용, 없으면 빈 객체
+        // 3. 안전한 접근 - player1이 있으면 사용, 없으면 빈 객체
         userQuestContent = context.player1?.blocks || {};
 
         if (typeof questDetails.quest_question === 'string') {
           userQuestQuestion = questDetails.quest_question;
         }
       } else {
-        // ✅ 4. 동적 속성 접근을 안전하게
+        // 4. 동적 속성 접근을 안전하게
         const playerKey = `player${assignment.partNumber}` as
           | 'player1'
           | 'player2'
@@ -202,17 +204,30 @@ export class ActivityService {
       throw new WsException('해당 방을 찾을 수 없습니다.');
     }
 
-    // 빈자리 자동 제출 처리
     const activity = this.activityStateService.getActivityState(room.id);
-    const participantCount = activity?.partAssignments.length || 0;
 
-    for (let partNumber = participantCount + 1; partNumber <= 4; partNumber++) {
+    if (activity?.status !== 'active') {
+      throw new WsException('활동이 진행 중이 아닙니다. 최종 제출을 요청할 수 없습니다.');
+    }
+
+    const participantCount = activity?.partAssignments.length || 0;
+    // 현재 제출물 갯수
+    const submissionCount = Object.keys(activity.submissions).length;
+
+    // 참가자들이 제출해야만 최종 제출 가능
+    if (participantCount !== submissionCount) {
+      throw new WsException('모든 참가자가 제출해야 최종 제출이 가능합니다.');
+    }
+
+    // 빈자리 자동 제출 처리
+    for (let partNumber = participantCount + 1; partNumber <= this.MAX_PARTICIPANT; partNumber++) {
       this.activityStateService.updateUserSubmission(
         room.id,
         `auto-part${partNumber}`,
         partNumber,
         'CORRECT_ANSWER',
       );
+      console.log(`[ActivityService] 빈자리 자동 제출 처리 완료`);
     }
 
     // activityStateService로부터 모든 제출물 가져오기

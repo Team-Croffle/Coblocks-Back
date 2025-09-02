@@ -54,6 +54,7 @@ export class ClassroomService {
       userId: managerId,
       userName: managerName,
       socketId: managerSocketId,
+      isManager: true,
     });
 
     // 방 생성 시 해당 방의 활동 상태도 같이 초기화 - eventEmitter를 이용해 의존없는 방식으로 구현
@@ -105,11 +106,6 @@ export class ClassroomService {
       }
     }
 
-    // 개설자가 아닌 경우에만 만석 체크
-    if (room.managerId !== userId && room.state === 'full') {
-      throw new WsException('방이 가득 찼습니다.'); // 방이 만석이면 에러
-    }
-
     // 동일 userId의 이전 소켓 정보 찾기 및 제거 (새로 고침 등으로 인한 중복 참가 방지)
     let oldSocketId: string | null = null;
     for (const [sid, participant] of room.participants.entries()) {
@@ -141,7 +137,7 @@ export class ClassroomService {
       }
     }
 
-    const newParticipant: Participant = { userId, userName, socketId };
+    const newParticipant: Participant = { userId, userName, socketId, isManager };
     room.participants.set(socketId, newParticipant); // 새 참가자 추가
     this.userRoomMap.set(socketId, room.id); // 새 소켓 ID와 방 ID 매핑
     console.log(
@@ -211,39 +207,66 @@ export class ClassroomService {
     const room = this.roomData.get(classroomId);
     if (!room) throw new WsException('존재하지 않는 방입니다.'); // 방이 존재하지 않으면 에러
 
+    // 공통 헬퍼 함수로 분리
+    const disconnectSocket = (socketId: string, reason: string) => {
+      const clientSocket = server.sockets.sockets.get(socketId);
+      if (clientSocket) {
+        clientSocket.disconnect(true);
+        console.log(`[ClassroomService] Socket ${socketId} disconnected: ${reason}`);
+      }
+    };
+
     // 나가는 사람이 개설자인 경우: 즉시 방 종료
     if (room.managerId === userId) {
+      disconnectSocket(socketId, 'manager left room');
+
       await this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
         console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
       });
       return { success: true, message: '방이 삭제되었습니다!' };
-    } else {
-      // 일반 참가자인 경우
-      room.participants.delete(socketId); // 참가자 목록에서 제거
-      this.userRoomMap.delete(socketId); // 사용자-방 매핑에서 제거
-      const remainingParticipants = Array.from(room.participants.values());
+    }
 
-      if (room.participants.size === 0) {
-        // 마지막 참여자가 명시적으로 나간 경우에도 방 종료
-        this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
-          console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
-        });
-        return {
-          success: true,
-          message: '마지막 참여자가 나가 방이 삭제되었습니다.',
-          remainingParticipants: [],
-        };
-      }
-      if (room.participants.size < 4 && room.state === 'full') {
-        room.state = 'wait';
-      }
+    // 일반 참가자인 경우
+    const leavingUser = room.participants.get(socketId);
+    const leftUserName = leavingUser?.userName || '알 수 없는 사용자';
+
+    room.participants.delete(socketId);
+    this.userRoomMap.delete(socketId);
+    const remainingParticipants = Array.from(room.participants.values());
+
+    if (room.participants.size === 0) {
+      disconnectSocket(socketId, 'last participant left');
+
+      this.terminateRoomImmediately(classroomId, server, this.userRoomMap).catch((error) => {
+        console.error(`[ClassroomService] Error terminating room ${classroomId}:`, error);
+      });
       return {
         success: true,
-        message: '방을 성공적으로 나갔습니다!',
-        participants: remainingParticipants,
-        state: room.state,
+        message: '마지막 참여자가 나가 방이 삭제되었습니다.',
+        remainingParticipants: [],
       };
     }
+
+    if (room.participants.size < 4 && room.state === 'full') {
+      room.state = 'wait';
+    }
+
+    // 다른 참가자들에게 누가 나갔는지 알림 (소켓 해제 전에!)
+    server.to(room.code).emit(events.CLASSROOM_USER_LEFT, {
+      leftUser: leftUserName,
+      users: remainingParticipants.map((p) => ({ userName: p.userName })),
+      userCount: remainingParticipants.length,
+      isManagerLeftTemporarily: false,
+    });
+
+    disconnectSocket(socketId, 'participant left room');
+
+    return {
+      success: true,
+      message: '방을 성공적으로 나갔습니다!',
+      participants: remainingParticipants,
+      state: room.state,
+    };
   }
 
   // 유예 기간이 활성화되어 있는지 확인
@@ -294,27 +317,42 @@ export class ClassroomService {
       this.roomRecoveryTimers.delete(classroomId);
     }
 
-    // 2. 클라이언트에 즉시 알림
-    server.to(room.code).emit(events.CLASSROOM_DELETED, {
-      classroomId: room.id,
-      message: `강의실이 종료되었습니다.`,
-    });
-
-    // 3. 소켓에서 방 제거
+    // 2. 방에 남아있는 소켓이 있는지 확인
     const socketsInRoom = await server.in(room.code).fetchSockets();
-    socketsInRoom.forEach((sock) => sock.leave(room.code));
 
-    // 4. 메모리 정리
+    if (socketsInRoom.length > 0) {
+      console.log(
+        `[ClassroomService] ${socketsInRoom.length} sockets still in room. Notifying and disconnecting.`,
+      );
+
+      // 클라이언트에 방 삭제 알림
+      server.to(room.code).emit(events.CLASSROOM_DELETED, {
+        classroomId: room.id,
+        message: `강의실이 종료되었습니다.`,
+      });
+
+      // 소켓을 방에서 제거하고 연결 해제
+      socketsInRoom.forEach((sock) => {
+        sock.leave(room.code);
+        sock.disconnect(true);
+      });
+    } else {
+      console.log(
+        `[ClassroomService] No active sockets in room ${room.code}. Proceeding with cleanup.`,
+      );
+    }
+
+    // 3. 메모리 정리
     for (const socketId of room.participants.keys()) {
       userRoomMap.delete(socketId);
     }
     this.roomCodeMap.delete(room.code);
     this.roomData.delete(classroomId);
 
-    // 5. 이벤트 발행
+    // 4. 이벤트 발행
     this.eventEmitter.emit('room.deleted', { roomId: classroomId });
 
-    // 6. DB 삭제는 백그라운드에서 처리 (실패해도 서비스 지속)
+    // 5. DB 삭제는 백그라운드에서 처리
     void this.deleteRoomFromDBAsync(classroomId, room.id);
 
     return true;

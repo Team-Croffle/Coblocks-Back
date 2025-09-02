@@ -22,7 +22,7 @@ export interface Activity {
     string,
     {
       partNumber: number;
-      content: any; // Blockly JSON 데이터
+      content: string; // Blockly JSON 데이터
     }
   >;
 }

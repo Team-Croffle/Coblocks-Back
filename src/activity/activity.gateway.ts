@@ -50,7 +50,7 @@ export class ActivityGateway {
 
   @UseGuards(ManagerGuard)
   @SubscribeMessage(events.ACTIVITY_FINAL_SUBMIT)
-  handleFinalSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
+  handleFinalSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: { code: string }) {
     return this.activityService.requestFinalSubmission(client, this.server, data);
   }
 

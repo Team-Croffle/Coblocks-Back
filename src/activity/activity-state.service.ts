@@ -82,7 +82,7 @@ export class ActivityStateService {
     classroomId: string,
     userId: string,
     partNumber: number,
-    submissionContent: unknown,
+    submissionContent: string,
   ): Activity | null {
     const activity = this.activities.get(classroomId);
     if (activity && activity.status === 'active') {
