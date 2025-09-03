@@ -146,6 +146,100 @@ export class ActivityService {
     return { success: true, message: '활동이 시작되었습니다.' };
   }
 
+  // 활동시 데이터 전송
+  // 활동 시작
+  activityData(client: Socket, server: Server) {
+    const { room, activity } = this._getRoomAndActivity(client.id);
+
+    // 요청을 보낸 사용자 정보 조회
+    const user = getSocketUser(client);
+    const userId = user.userId;
+
+    // 참여자들에게 파트 번호 배정
+    const participants = Array.from(room.participants.values());
+    if (participants.length === 0) {
+      throw new WsException('참여자가 없습니다. 활동을 시작할 수 없습니다.');
+    }
+
+    const assignments = participants.map((participant, index) => ({
+      userId: participant.userId,
+      userName: participant.userName,
+      partNumber: index + 1, // 1부터 시작하는 파트 번호
+    }));
+
+    // activityStateService를 통해 방의 활동 상태 업데이트 (한 번만)
+    this.activityStateService.startActivity(room.id, assignments);
+
+    // 🔹 요청을 보낸 사용자의 할당 정보만 찾기
+    const userAssignment = assignments.find((assignment) => assignment.userId === userId);
+    if (!userAssignment) {
+      throw new WsException('해당 사용자의 파트 정보를 찾을 수 없습니다.');
+    }
+
+    // 🔹 요청을 보낸 사용자를 위한 데이터만 준비
+    const questDetails = activity.currentQuest as QuestEntity;
+    if (!questDetails) {
+      console.error(`[Activity Service] currentQuest is null for room ${room.id}`);
+      throw new WsException('문제 정보를 찾을 수 없습니다.');
+    }
+
+    let userQuestContent = {};
+    let userQuestQuestion = '문제 설명을 불러올 수 없습니다.';
+
+    const context = questDetails.quest_context;
+
+    if (context.is_equal === true) {
+      // 모든 참가자가 같은 문제를 푸는 경우
+      userQuestContent = context.player1?.blocks || {};
+
+      if (typeof questDetails.quest_question === 'string') {
+        userQuestQuestion = questDetails.quest_question;
+      }
+    } else {
+      // 각 참가자가 다른 파트를 담당하는 경우
+      const playerKey = `player${userAssignment.partNumber}` as
+        | 'player1'
+        | 'player2'
+        | 'player3'
+        | 'player4';
+      userQuestContent = context[playerKey]?.blocks || {};
+
+      if (typeof questDetails.quest_question === 'object' && questDetails.quest_question !== null) {
+        const questionObj = questDetails.quest_question as Record<string, string>;
+        userQuestQuestion = questionObj[playerKey] || '문제 설명을 불러올 수 없습니다.';
+      }
+    }
+
+    // 🔹 요청을 보낸 클라이언트에게만 전송
+    const payload = {
+      questInfo: {
+        id: questDetails.quest_id,
+        overall_description: questDetails.quest_description,
+        difficulty: questDetails.quest_difficulty,
+        type: questDetails.quest_type,
+        is_equal: questDetails.quest_context.is_equal,
+        blockly_workspace: userQuestContent,
+        detailed_question: userQuestQuestion,
+        default_stage: questDetails.default_stage,
+      },
+      myPartNumber: userAssignment.partNumber,
+      allParticipantsAssignments: assignments,
+    };
+
+    // 🔹 요청한 클라이언트에게만 응답
+    client.emit('activity:resData', payload);
+
+    console.log(
+      `[ActivityService] Activity data sent to user ${user.userName} (part ${userAssignment.partNumber}) in room ${room.code}.`,
+    );
+
+    return {
+      success: true,
+      message: '활동 데이터가 성공적으로 전송되었습니다.',
+      partNumber: userAssignment.partNumber,
+    };
+  }
+
   // 솔루션 제출
   submitSolution(client: Socket, server: Server, data: SubmitSolutionDto) {
     // 방 정보 및 활동 정보 조회

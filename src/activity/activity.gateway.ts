@@ -66,4 +66,9 @@ export class ActivityGateway {
   handleSolutionSubmit(@MessageBody() data: SubmitSolutionDto, @ConnectedSocket() client: Socket) {
     return this.activityService.submitSolution(client, this.server, data);
   }
+
+  @SubscribeMessage('activity:reqData')
+  handleReqData(@ConnectedSocket() client: Socket) {
+    return this.activityService.activityData(client, this.server);
+  }
 }

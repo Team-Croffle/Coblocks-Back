@@ -156,4 +156,29 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       };
     }
   }
+
+  @SubscribeMessage('classroom:getList')
+  handleParticipantList(@ConnectedSocket() client: Socket) {
+    // 참여자 목록 요청
+    const id = this.classroomService.getRoomIdBySocketId(client.id);
+    if (!id) {
+      client.emit('error', { success: false, message: '방에 참가하고 있지 않습니다.' });
+      return;
+    }
+
+    const room = this.classroomService.getRoomById(id);
+    if (!room) {
+      client.emit('error', { success: false, message: '방에 참가하고 있지 않습니다.' });
+      return;
+    }
+
+    // 모든 참여자 정보 반환
+    const participants = Array.from(room.participants.values()).map((p) => ({
+      userId: p.userId,
+      userName: p.userName,
+      isManager: p.isManager,
+    }));
+
+    client.emit('classroom:list', { success: true, participants });
+  }
 }
