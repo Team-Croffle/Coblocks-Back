@@ -16,7 +16,6 @@ import { events } from 'src/utils/events';
 import { getSocketUser } from 'src/types/socket.types';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
-@UseGuards(JwtAuthGuard)
 @WebSocketGateway({
   cors: {
     origin: '*',
